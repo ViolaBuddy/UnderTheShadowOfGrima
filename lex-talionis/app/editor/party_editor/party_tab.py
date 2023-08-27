@@ -9,7 +9,7 @@ class PartyDatabase(DatabaseTab):
     @classmethod
     def create(cls, parent=None):
         data = DB.parties
-        title: str = "Party"
+        title: str = _("Party")
         right_frame = party_properties.PartyProperties
 
         def deletion_func(model, index):

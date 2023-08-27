@@ -25,7 +25,7 @@ class MusicDialog(SimpleDialog):
         self.setLayout(layout)
 
         self.boxes = {}
-        for idx, key in enumerate(self.current.music.keys()):
+        for key in DB.music_keys:
             title = key.replace('_', ' ').title()
             box = PropertyBox(title, QLineEdit, self)
             box.edit.setReadOnly(True)
@@ -81,6 +81,13 @@ class PropertiesMenu(QWidget):
         self.title_box = PropertyBox("Level Title", QLineEdit, self)
         self.title_box.edit.textChanged.connect(self.title_changed)
         form.addWidget(self.title_box)
+
+        # Records
+        self.record_box = PropertyCheckBox("Display in Records?", QCheckBox, self)
+        self.record_box.setToolTip("You might want to turn this off if this level is not a main story level that should be viewed in the Records screen.")
+        self.record_box.edit.setChecked(True)
+        self.record_box.edit.stateChanged.connect(self.record_changed)
+        form.addWidget(self.record_box)
 
         self.party_box = PartyBox(self)
         self.party_box.edit.activated.connect(self.party_changed)
@@ -157,6 +164,7 @@ class PropertiesMenu(QWidget):
             return
         self.title_box.edit.setText(current.name)
         self.nid_box.edit.setText(current.nid)
+        self.record_box.edit.setChecked(bool(current.should_record))
         if current.party in DB.parties.keys():
             idx = DB.parties.index(current.party)
             self.party_box.edit.setCurrentIndex(idx)
@@ -210,6 +218,9 @@ class PropertiesMenu(QWidget):
         self.current.name = text
         self.state_manager.change_and_broadcast('ui_refresh_signal', None)
 
+    def record_changed(self, state):
+        self.current.should_record = bool(state)
+
     def party_changed(self):
         idx = self.party_box.edit.currentIndex()
         if idx >= 0:
@@ -228,19 +239,23 @@ class PropertiesMenu(QWidget):
         elif key == 'loss':
             self.current.objective[key] = self.loss_condition.edit.text()
 
+    def check_positions(self, tilemap):
+        # Tilemap is the tilemap itself, not a nid
+        # Reset the positions of units who are now off the side of the map
+        for unit in self.current.units:
+            if unit.starting_position:
+                if unit.starting_position[0] >= tilemap.width or unit.starting_position[1] >= tilemap.height:
+                    unit.starting_position = None
+        # Reset any illegal positions for groups
+        for group in self.current.unit_groups:
+            group.positions = {k: v for k, v in group.positions.items() if v[0] < tilemap.width and v[1] < tilemap.height}
+
     def select_tilemap(self):
         res, ok = tile_tab.get_tilemaps()
         if ok and res:
             nid = res.nid
             self.current.tilemap = nid
-            # Reset the positions of units who are now off the side of the map
-            for unit in self.current.units:
-                if unit.starting_position:
-                    if unit.starting_position[0] >= res.width or unit.starting_position[1] >= res.height:
-                        unit.starting_position = None
-            # Reset any illegal positions for groups
-            for group in self.current.unit_groups:
-                group.positions = {k: v for k, v in group.positions.items() if v[0] < res.width and v[1] < res.height}
+            self.check_positions(res)
             self.state_manager.change_and_broadcast('ui_refresh_signal', None)
 
     def select_bg_tilemap(self):

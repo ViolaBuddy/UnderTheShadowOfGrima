@@ -1,8 +1,10 @@
 from PyQt5.QtWidgets import QFrame, QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy, QLabel
 from PyQt5.QtGui import QPainter, QColor
-from PyQt5.QtCore import QPoint, QPointF, pyqtSignal
+from PyQt5.QtCore import QPoint, QPointF, pyqtSignal, Qt
 
 class FrameLayout(QWidget):
+    clicked = pyqtSignal()
+
     def __init__(self, parent=None, title=None):
         QFrame.__init__(self, parent=parent)
 
@@ -34,15 +36,17 @@ class FrameLayout(QWidget):
 
     def addWidget(self, widget):
         self._content_layout.addWidget(widget)
+        self._content.resize(self._content.sizeHint())
 
     def initCollapsable(self):
         self._title_frame.clicked.connect(self.toggleCollapsed)
-        # QObject.connect(self._title_frame, SIGNAL('clicked()'), self.toggleCollapsed)
+        self._title_frame.clicked.connect(self.clicked)
 
     def toggleCollapsed(self):
         self._content.setVisible(self._is_collapsed)
         self._is_collapsed = not self._is_collapsed
         self._title_frame._arrow.setArrow(int(self._is_collapsed))
+        self.resize(self.sizeHint())
 
     def enabled(self):
         return not self._is_collapsed

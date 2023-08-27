@@ -27,11 +27,14 @@ class SpecialSprite(object):
         return self._image
 
 class SpriteDict(dict):
-    def get(self, val):
+    def get(self, val, fallback='bg_black_tile'):
+        '''Retrieves an image in the form of a pygame surface.
+        Fallback provides a backup image if the specified one
+        cannot be found'''
         if val in self:
             return self[val].image
         # Defaults to this
-        return self['bg_black_tile'].image
+        return self[fallback].image
 
 def load_sprites(root):
     for root, dirs, files in os.walk(root):

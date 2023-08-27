@@ -4,6 +4,7 @@ from app.engine import action
 from app.engine import skill_system
 from app.engine.game_state import game
 from app.engine.combat import playback as pb
+from app.engine.movement import movement_funcs
 
 class MultiItem(ItemComponent):
     nid = 'multi_item'
@@ -43,6 +44,14 @@ class AllowSameTarget(ItemComponent):
     def allow_same_target(self, unit, item) -> bool:
         return True
 
+class AllowLessThanMaxTargets(ItemComponent):
+    nid = 'allow_less_than_max_targets'
+    desc = "If the item is multi target this component allows the user to select less than the required number of targets with the item"
+    tag = ItemTags.ADVANCED
+
+    def allow_less_than_max_targets(self, unit, item) -> bool:
+        return True
+
 class StoreUnit(ItemComponent):
     nid = 'store_unit'
     desc = "The targeted unit is stored in the game's memory when hit. The next time the unload unit component is called the unit is placed on the targeted tile."
@@ -63,7 +72,7 @@ class UnloadUnit(ItemComponent):
     tag = ItemTags.ADVANCED
 
     def target_restrict(self, unit, item, def_pos, splash) -> bool:
-        if def_pos and not game.board.get_unit(def_pos) and game.movement.check_simple_traversable(def_pos):
+        if def_pos and not game.board.get_unit(def_pos) and movement_funcs.check_simple_traversable(def_pos):
             return True
         return False
 

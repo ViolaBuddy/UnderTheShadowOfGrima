@@ -1,5 +1,12 @@
+from __future__ import annotations
 from enum import Enum
+from typing import TYPE_CHECKING, Optional
+
 from app.data.database.components import Component, ComponentType
+
+if TYPE_CHECKING:
+    from app.engine.objects.item import ItemObject
+
 
 class ItemTags(Enum):
     BASE = 'base'
@@ -21,7 +28,7 @@ class ItemTags(Enum):
     DEPRECATED = 'deprecated'
 
 class ItemComponent(Component):
-    item = None
+    item: Optional[ItemObject] = None
 
 def get_items_using(expose: ComponentType, value, db) -> list:
     affected_items = []

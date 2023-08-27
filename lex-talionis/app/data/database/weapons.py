@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from app.utilities.data import Data, Prefab
+from app.utilities import str_utils
 
 # === Can get bonuses to combat statistics based on weapon_type and weapon_rank
 class CombatBonus(Prefab):
@@ -108,6 +109,11 @@ class RankCatalog(Data[WeaponRank]):
                 return correct_rank
         return correct_rank
 
+    def get_highest_rank(self) -> WeaponRank:
+        ranks = sorted(self._list, key=lambda x: x.requirement)
+        return ranks[-1]
+
+
 # === WEAPON TYPE ===
 @dataclass(eq=False)
 class WeaponType(Prefab):
@@ -146,21 +152,28 @@ class WeaponType(Prefab):
 class WeaponCatalog(Data[WeaponType]):
     datatype = WeaponType
 
-    def default(self):
-        return WexpGain(False, 0)
+    def default(self, db):
+        default_cap = db.weapon_ranks.get_highest_rank().requirement
+        return WexpGain(False, 0, default_cap)
+
+    def create_new(self, db):
+        nids = [d.nid for d in self]
+        nid = name = str_utils.get_next_name("New Weapon Type", nids)
+        new_weapon = WeaponType(
+            nid, name, False, CombatBonusList(),
+            CombatBonusList(), CombatBonusList())
+        self.append(new_weapon)
+        return new_weapon
 
 # === WEAPON EXPERIENCE GAINED ===
 class WexpGain():
-    def __init__(self, usable: bool, wexp_gain: int):
-        self.usable = usable
+    def __init__(self, usable: bool, wexp_gain: int, cap: int = 251):
+        self.usable = usable  # Used only by Klass Objects
         self.wexp_gain = wexp_gain
-
-    def absorb(self, wexp_gain):
-        self.usable = wexp_gain.usable
-        self.wexp_gain = wexp_gain.wexp_gain
+        self.cap = cap  # Used only by Klass Objects
 
     def save(self):
-        return (self.usable, self.wexp_gain)
+        return (self.usable, self.wexp_gain, self.cap)
     
     @classmethod
     def restore(cls, s_tuple):

@@ -1,24 +1,24 @@
-from app.engine.exp_calculator import ExpCalcType, ExpCalculator
-import math
+import logging
 from functools import partial
 
-from PyQt5.QtWidgets import QGridLayout, QLineEdit, QSpinBox, QHBoxLayout, \
-    QVBoxLayout, QGroupBox, QTreeView, QWidget, QDoubleSpinBox, QLabel, QSizePolicy, \
-    QSplitter, QFrame, QPushButton, QFormLayout
-from PyQt5.QtCore import Qt, QAbstractItemModel
+from PyQt5.QtCore import QAbstractItemModel, Qt
+from PyQt5.QtWidgets import (QDoubleSpinBox, QFormLayout, QFrame, QGridLayout,
+                             QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+                             QPushButton, QSizePolicy, QSpinBox, QSplitter,
+                             QTreeView, QVBoxLayout, QWidget, QTabWidget)
 
-from app.utilities.data import Data
+from app.data.database.constants import ConstantCatalog, ConstantType, ConstantTag
 from app.data.database.database import DB
-
-from app.extensions.custom_gui import PropertyBox, ComboBox
-
 from app.editor.base_database_gui import DatabaseTab
 from app.editor.data_editor import SingleDatabaseEditor
 from app.editor.sound_editor import sound_tab
+from app.engine.exp_calculator import ExpCalcType, ExpCalculator
 from app.extensions.checkable_list_dialog import ComponentModel
+from app.extensions.custom_gui import ComboBox, PropertyBox
 from app.extensions.frame_layout import FrameLayout
+from app.utilities.data import Data
+from app.utilities import str_utils
 
-import logging
 
 class BoolConstantsModel(ComponentModel):
     def __init__(self, data, parent=None):
@@ -31,6 +31,8 @@ class BoolConstantsModel(ComponentModel):
             return None
         data = self._data[index.row()]
         if role == Qt.DisplayRole:
+            return data.name
+        elif role == Qt.ToolTipRole:
             return data.name
         elif role == Qt.CheckStateRole:
             value = Qt.Checked if data.value else Qt.Unchecked
@@ -60,12 +62,12 @@ class MainExpEquation(QWidget):
         self.window = parent
         self._data = data
 
-        label = QLabel('Combat Experience Equation:', self)
+        label = QLabel(_('Combat Experience Equation:'), self)
         label.setAlignment(Qt.AlignBottom)
         label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
         exp_calc_type = ExpCalcType(self._data.get('exp_formula').value).name
-        self.exp_calc_type_selector = PropertyBox("Exp Formula Type", ComboBox, self.window)
+        self.exp_calc_type_selector = PropertyBox(_("Exp Formula Type"), ComboBox, self.window)
         objs = [e.name for e in ExpCalcType]
         self.exp_calc_type_selector.edit.addItems(objs)
         self.exp_calc_type_selector.edit.setCurrentText(exp_calc_type)
@@ -122,7 +124,7 @@ class MainExpEquation(QWidget):
         self.exp_offset.valueChanged.connect(self.window.parameters_changed)
 
         label1 = QLabel(' * e^(', self)
-        label2 = QLabel(' * (<b>Level Difference</b> + ', self)
+        label2 = QLabel(_(' * (<b>Level Difference</b> + '), self)
         label3 = QLabel('))', self)
 
         standard_exp_frame = QFrame()
@@ -172,15 +174,15 @@ class MainExpEquation(QWidget):
         self.gexp_intercept.valueChanged.connect(self.window.parameters_changed)
 
         left_layout = QFormLayout()
-        left_layout.addRow('Minimum exp from hit: <b>(MinExp)</b>', self.gexp_min)
-        left_layout.addRow('Maximum exp from hit: <b>(MaxExp)</b>', self.gexp_max)
-        left_layout.addRow('How quickly exp rises or drops off from par: <b>(Slope)</b>', self.gexp_slope)
-        left_layout.addRow('Par exp earned in combat between same level units: <b>(Intercept)</b>', self.gexp_intercept)
+        left_layout.addRow(_('Minimum exp from hit: <b>(MinExp)</b>'), self.gexp_min)
+        left_layout.addRow(_('Maximum exp from hit: <b>(MaxExp)</b>'), self.gexp_max)
+        left_layout.addRow(_('How quickly exp rises or drops off from par: <b>(Slope)</b>'), self.gexp_slope)
+        left_layout.addRow(_('Par exp earned in combat between same level units: <b>(Intercept)</b>'), self.gexp_intercept)
 
         right_layout = QVBoxLayout()
-        magLabel = QLabel('<b>Magnitude</b> = <b>MaxExp</b> - <b>MinExp</b>', self)
-        offsetLabel = QLabel('<b>Offset</b> = log(-log((<b>Intercept</b> - <b>MinExp</b>) / <b>Magnitude</b>)) / <b>Slope</b>')
-        gompertzLabel = QLabel('<b>Exp</b> = <b>MinExp</b> + <b>Magnitude</b> * e ^ (-e ^ (<b>-Slope</b> * (<b>Level Diff</b> - <b>Offset</b>)))')
+        magLabel = QLabel(_('<b>Magnitude</b> = <b>MaxExp</b> - <b>MinExp</b>'), self)
+        offsetLabel = QLabel(_('<b>Offset</b> = log(-log((<b>Intercept</b> - <b>MinExp</b>) / <b>Magnitude</b>)) / <b>Slope</b>'))
+        gompertzLabel = QLabel(_('<b>Exp</b> = <b>MinExp</b> + <b>Magnitude</b> * e ^ (-e ^ (<b>-Slope</b> * (<b>Level Diff</b> - <b>Offset</b>)))'))
         right_layout.addWidget(magLabel)
         right_layout.addWidget(offsetLabel)
         right_layout.addWidget(gompertzLabel)
@@ -197,7 +199,7 @@ class MainExpEquation(QWidget):
 class DisplayExpResults(QWidget):
     @classmethod
     def create(cls, data, parent=None):
-        text = 'A level ', ' unit fights a level ', ' unit'
+        text = _('A level '), _(' unit fights a level '), _(' unit')
         return cls(data, text, parent)
 
     def __init__(self, data, text, parent=None):
@@ -223,7 +225,7 @@ class DisplayExpResults(QWidget):
         self.label2 = QLabel(text[1], self)
         self.label3 = QLabel(text[2], self)
 
-        self.label4 = QLabel('Experience Gained: ', self)
+        self.label4 = QLabel(_('Experience Gained: '), self)
         self.label4.setAlignment(Qt.AlignBottom)
         self.label4.setAlignment(Qt.AlignRight)
 
@@ -441,7 +443,7 @@ class ConstantDatabase(DatabaseTab):
     def __init__(self, data, title, parent=None):
         QWidget.__init__(self, parent)
         self.window = parent
-        self._data = data
+        self._data: ConstantCatalog = data
         self.title = title
 
         self.setWindowTitle('%s Editor' % self.title)
@@ -452,18 +454,26 @@ class ConstantDatabase(DatabaseTab):
         self.left_frame.setLayout(self.layout)
 
         bool_section = QGroupBox(self)
-        bool_constants = Data([d for d in self._data if d.attr == bool and not d.tag == 'hidden'])
-        self.bool_model = BoolConstantsModel(bool_constants, self)
-        bool_view = QTreeView()
-        bool_view.setModel(self.bool_model)
-        bool_view.resizeColumnToContents(0)
-        bool_view.header().hide()
-        bool_view.header().setStretchLastSection(False)
-        bool_view.clicked.connect(self.on_bool_click)
+        all_bool_constants = Data([d for d in self._data if d.attr == ConstantType.BOOL and not d.tag == 'hidden'])
+
+        self.bool_tab_bar = QTabWidget(self)
+        for idx, tag in enumerate(ConstantTag):
+            bool_constants = Data([d for d in all_bool_constants if d.tag == tag])
+            if not bool_constants:
+                continue
+            bool_model = BoolConstantsModel(bool_constants, self)
+            bool_view = QTreeView()
+            bool_view.setModel(bool_model)
+            bool_view.header().hide()
+            bool_view.header().setStretchLastSection(False)
+            bool_view.resizeColumnToContents(0)
+            bool_view.setColumnWidth(0, 400)
+            bool_view.clicked.connect(partial(self.on_bool_click, bool_model))
+            self.bool_tab_bar.addTab(bool_view, str_utils.snake_to_readable(tag.value))
 
         bool_layout = QHBoxLayout()
         bool_section.setLayout(bool_layout)
-        bool_layout.addWidget(bool_view)
+        bool_layout.addWidget(self.bool_tab_bar)
 
         battle_constants = ('num_items', 'num_accessories', 'min_damage', 'enemy_leveling')
         battle_info = ("Number of non-accessory items units will be able to carry. The engine will not display inventories of size 6 or greater correctly.",
@@ -472,10 +482,10 @@ class ConstantDatabase(DatabaseTab):
                        "How should enemy units get their automatic level ups")
         battle_section = self.create_section(battle_constants, battle_info)
         battle_section.setTitle("Battle Constants")
-        misc_constants = ('game_nid', 'title', 'num_save_slots', 'sell_modifier')
+        misc_constants = ('game_nid', 'title', 'num_save_slots', 'sell_modifier', 'glancing_hit')
         misc_section = self.create_section(misc_constants)
         misc_section.setTitle("Miscellaneous Constants")
-        music_constants = ('music_main', 'music_promotion', 'music_class_change')
+        music_constants = ('music_main', 'music_promotion', 'music_class_change', 'music_game_over')
         music_section = self.create_section(music_constants)
         music_section.setTitle("Music Constants")
 
@@ -529,24 +539,27 @@ class ConstantDatabase(DatabaseTab):
             if not constant:
                 logging.error("Couldn't find constant %s" % constant_nid)
                 continue
-            if constant.attr == int:
+            if constant.attr in (ConstantType.INT, ConstantType.POSITIVE_INT):
                 box = PropertyBox(constant.name, QSpinBox, self)
-                box.edit.setRange(0, 10)
+                if constant.attr == ConstantType.INT:
+                    box.edit.setRange(0, 100)
+                elif constant.attr == ConstantType.POSITIVE_INT:
+                    box.edit.setRange(1, 100)
                 box.edit.setValue(constant.value)
                 box.edit.setAlignment(Qt.AlignRight)
                 box.edit.valueChanged.connect(constant.set_value)
-            elif constant.attr == float:
+            elif constant.attr == ConstantType.FLOAT:
                 box = PropertyBox(constant.name, QDoubleSpinBox, self)
-                box.edit.setRange(0, 10)
+                box.edit.setRange(0, 100)
                 box.edit.setValue(constant.value)
                 box.edit.setDecimals(1)
                 box.edit.setAlignment(Qt.AlignRight)
                 box.edit.valueChanged.connect(constant.set_value)
-            elif constant.attr == str:
+            elif constant.attr == ConstantType.STR:
                 box = PropertyBox(constant.name, QLineEdit, self)
                 box.edit.setText(constant.value)
                 box.edit.textChanged.connect(constant.set_value)
-            elif constant.attr == 'music':
+            elif constant.attr == ConstantType.MUSIC:
                 box = PropertyBox(constant.name, QLineEdit, self)
                 box.edit.setReadOnly(True)
                 box.add_button(QPushButton('...'))
@@ -563,14 +576,14 @@ class ConstantDatabase(DatabaseTab):
             layout.addWidget(box)
         return section
 
-    def on_bool_click(self, index):
-        if bool(self.bool_model.flags(index) & Qt.ItemIsEnabled):
-            current_checked = self.bool_model.data(index, Qt.CheckStateRole)
+    def on_bool_click(self, model, index):
+        if bool(model.flags(index) & Qt.ItemIsEnabled):
+            current_checked = model.data(index, Qt.CheckStateRole)
             # Toggle checked
             if current_checked == Qt.Checked:
-                self.bool_model.setData(index, Qt.Unchecked, Qt.CheckStateRole)
+                model.setData(index, Qt.Unchecked, Qt.CheckStateRole)
             else:
-                self.bool_model.setData(index, Qt.Checked, Qt.CheckStateRole)
+                model.setData(index, Qt.Checked, Qt.CheckStateRole)
 
     def access_music_resources(self, constant, box):
         res, ok = sound_tab.get_music()
@@ -583,6 +596,7 @@ class ConstantDatabase(DatabaseTab):
 # Run "python -m app.editor.constant_tab" from main directory
 if __name__ == '__main__':
     import sys
+
     from PyQt5.QtWidgets import QApplication
     app = QApplication(sys.argv)
     DB.load('default.ltproj')

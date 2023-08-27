@@ -18,6 +18,7 @@ class SkillTags(Enum):
 
     CUSTOM = 'custom'
     HIDDEN = 'hidden'
+    DEPRECATED = 'deprecated'
 
 class SkillComponent(Component):
     skill = None

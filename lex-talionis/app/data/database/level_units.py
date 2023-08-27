@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Dict, List, Optional, Tuple
 from app.utilities.typing import NID
 from dataclasses import dataclass, field
 
@@ -10,20 +10,20 @@ class GenericUnit(Prefab):
     variant: str = None
 
     level: int = None
-    klass: str = None
+    klass: NID = None
 
-    faction: str = None
+    faction: NID = None
 
-    starting_items: List[Tuple[NID, bool]] = field(default_factory=list)
+    starting_items: List[List] = field(default_factory=list) # list is a tuple [item_nid, droppable]
     starting_skills: List[NID] = field(default_factory=list)
 
     team: str = None
-    ai: str = None
-    roam_ai: str = None
-    ai_group: str = None
+    ai: Optional[NID] = None
+    roam_ai: Optional[NID] = None
+    ai_group: Optional[NID] = None
 
-    starting_position: list = None  # 2-tuple
-    starting_traveler: NID = None  # unit nid
+    starting_position: Optional[Tuple[int, int]] = None 
+    starting_traveler: Optional[NID] = None  # unit nid
 
     generic: bool = True
 
@@ -61,14 +61,14 @@ class GenericUnit(Prefab):
 class UniqueUnit(Prefab):
     nid: str = None
     team: str = None
-    ai: str = None
-    roam_ai: str = None
-    ai_group: str = None
+    ai: Optional[NID] = None
+    roam_ai: Optional[NID] = None
+    ai_group: Optional[str] = None
 
-    faction: str = None  # Always None
+    faction: NID = None  # Always None
 
-    starting_position: list = None  # 2-tuple
-    starting_traveler: NID = None  # Unit nid
+    starting_position: Optional[Tuple[int, int]] = None
+    starting_traveler: Optional[NID] = None  # Unit nid
 
     generic: bool = False
 
@@ -97,8 +97,8 @@ class UniqueUnit(Prefab):
 @dataclass
 class UnitGroup(Prefab):
     nid: str = None
-    units: list = None  # list of unit nids
-    positions: dict = None  # unit nid : position
+    units: List[NID] = field(default_factory=list)  # list of unit nids
+    positions: Dict[NID, Tuple[int, int]] = field(default_factory=dict)  # unit nid : position
 
     @classmethod
     def restore(cls, value):

@@ -7,6 +7,7 @@ from app.data.database.components import ComponentType
 from app.data.database.item_components import ItemComponent, ItemTags
 from app.engine import item_funcs, skill_system, target_system
 from app.engine.game_state import game
+from app.engine.movement import movement_funcs
 from app.utilities import utils
 
 
@@ -15,53 +16,34 @@ class TargetsAnything(ItemComponent):
     desc = "Item targets any tile"
     tag = ItemTags.TARGET
 
-    def ai_targets(self, unit, item) -> set:
-        return {(x, y) for x in range(game.tilemap.width) for y in range(game.tilemap.height)}
-
     def valid_targets(self, unit, item) -> set:
-        rng = item_funcs.get_range(unit, item)
-        positions = target_system.find_manhattan_spheres(rng, *unit.position)
-        return {pos for pos in positions if game.board.check_bounds(pos)}
+        return {(x, y) for x in range(game.tilemap.width) for y in range(game.tilemap.height)}
 
 class TargetsUnits(ItemComponent):
     nid = 'target_unit'
     desc = "Item targets any unit"
     tag = ItemTags.TARGET
 
-    def ai_targets(self, unit, item):
-        return {other.position for other in game.units if other.position}
-
     def valid_targets(self, unit, item) -> set:
-        targets = {other.position for other in game.units if other.position}
-        return {t for t in targets if utils.calculate_distance(unit.position, t) in item_funcs.get_range(unit, item)}
+        return {other.position for other in game.units if other.position}
 
 class TargetsEnemies(ItemComponent):
     nid = 'target_enemy'
     desc = "Item targets any enemy"
     tag = ItemTags.TARGET
 
-    def ai_targets(self, unit, item):
-        return {other.position for other in game.units if other.position and
-                skill_system.check_enemy(unit, other)}
-
     def valid_targets(self, unit, item) -> set:
-        targets = {other.position for other in game.units if other.position and
+        return {other.position for other in game.units if other.position and
                    skill_system.check_enemy(unit, other)}
-        return {t for t in targets if utils.calculate_distance(unit.position, t) in item_funcs.get_range(unit, item)}
 
 class TargetsAllies(ItemComponent):
     nid = 'target_ally'
     desc = "Item targets any ally"
     tag = ItemTags.TARGET
 
-    def ai_targets(self, unit, item):
-        return {other.position for other in game.units if other.position and
-                skill_system.check_ally(unit, other)}
-
     def valid_targets(self, unit, item) -> set:
-        targets = {other.position for other in game.units if other.position and
+        return {other.position for other in game.units if other.position and
                    skill_system.check_ally(unit, other)}
-        return {t for t in targets if utils.calculate_distance(unit.position, t) in item_funcs.get_range(unit, item)}
 
 class TargetsSpecificTiles(ItemComponent):
     nid = 'target_specific_tile'
@@ -71,14 +53,8 @@ class TargetsSpecificTiles(ItemComponent):
     expose = ComponentType.String
     value = ''
 
-    def ai_targets(self, unit, item) -> set:
-        return set(self.resolve_targets())
-
     def valid_targets(self, unit, item) -> set:
-        rng = item_funcs.get_range(unit, item)
-        range_restrictions = target_system.find_manhattan_spheres(rng, *unit.position)
-        targetable_positions = self.resolve_targets(unit, item)
-        return {pos for pos in targetable_positions if pos in range_restrictions}
+        return set(self.resolve_targets(unit, item))
 
     def resolve_targets(self, unit, item):
         from app.engine import evaluate
@@ -122,17 +98,25 @@ class EvalSpecialRange(ItemComponent):
         return EvalSpecialRange.calculate_range_restrict(self.value, max_rng)
 
     def target_restrict(self, unit, item, def_pos, splash) -> bool:
-        net_pos = (def_pos[0] - unit.position[0], def_pos[1] - unit.position[1])
-        range_restriction = self.range_restrict(unit, item)
-        if net_pos in range_restriction:
-            return True
-        return False
+        if def_pos:
+            net_pos = (def_pos[0] - unit.position[0], def_pos[1] - unit.position[1])
+            range_restriction = self.range_restrict(unit, item)
+            if net_pos in range_restriction:
+                return True
+            return False
+        else:
+            for pos in splash:
+                net_pos = (pos[0] - unit.position[0], pos[1] - unit.position[1])
+                range_restriction = self.range_restrict(unit, item)
+                if net_pos not in range_restriction:
+                    return False
+        return True
 
 class EvalTargetRestrict2(ItemComponent):
     nid = 'eval_target_restrict_2'
     desc = \
 """
-Restricts which units can be targeted. These properties are accessible in the eval body:
+Restricts which units or spaces can be targeted. These properties are accessible in the eval body:
 
 - `unit`: the unit using the item
 - `target`: the target of the item
@@ -151,7 +135,7 @@ Restricts which units can be targeted. These properties are accessible in the ev
             target = game.board.get_unit(def_pos)
             unit_pos = unit.position
             target_pos = def_pos
-            if target and evaluate.evaluate(self.value, unit, target, unit_pos, local_args={'target_pos': target_pos, 'item': item}):
+            if evaluate.evaluate(self.value, unit, target, unit_pos, local_args={'target_pos': target_pos, 'item': item}):
                 return True
             for s_pos in splash:
                 target = game.board.get_unit(s_pos)
@@ -189,9 +173,25 @@ class TraversableTargetRestrict(ItemComponent):
 
     def target_restrict(self, unit, item, def_pos, splash) -> bool:
         if unit and def_pos:
-            if game.movement.check_traversable(unit, def_pos):
+            if movement_funcs.check_traversable(unit, def_pos):
                 return True
         return False
+        
+class IgnoreLineOfSight(ItemComponent):
+    nid = 'ignore_line_of_sight'
+    desc = 'Item ignores line of sight rules even when line of sight constant is enabled.'
+    tag = ItemTags.TARGET
+    
+    def ignore_line_of_sight(self, unit, item) -> bool:
+        return True
+
+class IgnoreFogOfWar(ItemComponent):
+    nid = 'ignore_fog_of_war'
+    desc = 'Item can target positions even if they are in fog of war.'
+    tag = ItemTags.TARGET
+    
+    def ignore_fog_of_war(self, unit, item) -> bool:
+        return True
 
 class MinimumRange(ItemComponent):
     nid = 'min_range'

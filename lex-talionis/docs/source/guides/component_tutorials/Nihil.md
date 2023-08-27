@@ -27,10 +27,10 @@ class NihiledBy(SkillComponent):
                 return
         self._condition = True
 
-    def post_combat(self, playback, unit, item, target, mode):
+    def post_combat_unconditional(self, playback, unit, item, target, mode):
         self._condition = True
 
-    def condition(self, unit):
+    def condition(self, unit, item):
         return self._condition
 
     def test_on(self, playback, unit, item, target, mode):

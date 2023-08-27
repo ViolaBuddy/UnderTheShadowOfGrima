@@ -1,5 +1,3 @@
-
-
 from app.data.database.database_validator import DatabaseValidatorEngine
 import logging
 from typing import List
@@ -62,7 +60,7 @@ def unit_db_to_csv(unit_db: UnitCatalog):
     if not unit_db._list:
         return ""
     first_elem = unit_db._list[0]
-    bases_d, _ = first_elem.get_stat_lists()
+    bases_d = first_elem.get_stat_lists()[0]
     weapons_l = list(first_elem.wexp_gain.keys())
     stats_l = list(bases_d.keys())
     # header
@@ -71,7 +69,7 @@ def unit_db_to_csv(unit_db: UnitCatalog):
     ss = ','.join(headers) + '\n'
     for unit in unit_db:
         data = [unit.name, unit.nid]
-        ubases, ugrowths = unit.get_stat_lists()
+        ubases, ugrowths, ustatcapmodifiers = unit.get_stat_lists()
         wranks = unit.wexp_gain
         data += [ubases[stat] for stat in stats_l] + [ugrowths[stat] for stat in stats_l] + [wranks[weapon].wexp_gain for weapon in weapons_l]
         ss += ','.join([str(dat) for dat in data]) + '\n'
@@ -143,9 +141,9 @@ def update_db_with_unit_csv(db: Database, unit_csv_str):
                 weapon = headers[i]
                 rank = int(unit_data[i])
                 if rank > 0:
-                    curr_unit.wexp_gain[weapon] = WexpGain(True, rank)
+                    curr_unit.wexp_gain[weapon] = WexpGain(True, rank, 251)
                 else:
-                    curr_unit.wexp_gain[weapon] = WexpGain(False, rank)
+                    curr_unit.wexp_gain[weapon] = WexpGain(False, rank, 251)
 
 
 def validate_type(db: Database, expose_type: ComponentType, value: str):

@@ -1,7 +1,6 @@
 from app.utilities.typing import Color3, NID, Point
 from typing import Dict, Tuple
 from app.constants import TILEWIDTH, TILEHEIGHT
-from app.utilities import utils
 
 from app.data.database.database import DB
 from app.engine.sprites import SPRITES
@@ -10,7 +9,7 @@ from app.engine.game_state import game
 
 class BoundaryInterface():
     draw_order = ('all_spell', 'all_attack', 'spell', 'attack')
-    enemy_teams = ('enemy', 'enemy2')
+    enemy_teams = DB.teams.enemies
     fog_of_war_tile1 = SPRITES.get('bg_fow_tile')
     fog_of_war_tile2 = SPRITES.get('bg_black_tile')
 
@@ -130,7 +129,7 @@ class BoundaryInterface():
     def _add_unit(self, unit):
         valid_moves = target_system.get_valid_moves(unit, force=True)
 
-        if DB.constants.value('zero_move') and unit.get_ai() and not unit.ai_group_active:
+        if DB.constants.value('zero_move') and unit.get_ai() and not game.ai_group_active(unit.ai_group):
             ai_prefab = DB.ai.get(unit.get_ai())
             guard = ai_prefab.guard_ai()
             if guard:
@@ -169,7 +168,7 @@ class BoundaryInterface():
         if unit.position:
             x, y = unit.position
             other_units = {game.get_unit(nid) for nid in self.grids['movement'][x * self.height + y]}
-            other_units = {other_unit for other_unit in other_units if not utils.compare_teams(unit.team, other_unit.team)}
+            other_units = {other_unit for other_unit in other_units if unit.team not in DB.teams.get_allies(other_unit.team)}
 
             # Set unit's position to non-existent for a brief momement
             game.board.remove_unit(unit.position, unit)
@@ -191,7 +190,7 @@ class BoundaryInterface():
             x, y = unit.position
             # print(self.grids['movement'][x * self.height + y])
             other_units = {game.get_unit(nid) for nid in self.grids['movement'][x * self.height + y]}
-            other_units = {other_unit for other_unit in other_units if not utils.compare_teams(unit.team, other_unit.team)}
+            other_units = {other_unit for other_unit in other_units if unit.team not in DB.teams.get_allies(other_unit.team)}
 
             for other_unit in other_units:
                 self._remove_unit(other_unit)
@@ -266,7 +265,7 @@ class BoundaryInterface():
 
                 # Remove all units that we shouldn't be able to see from the boundary
                 # Fog of War application
-                if game.level_vars.get('_fog_of_war'):
+                if game.level_vars.get('_fog_of_war') or game.board.fog_region_set:
                     new_grid = []
                     for cell in grid:
                         new_grid.append({nid for nid in cell if game.board.in_vision(game.get_unit(nid).position)})
@@ -275,6 +274,10 @@ class BoundaryInterface():
 
                 for y in range(self.height):
                     for x in range(self.width):
+                        # Only make boundaries within game board bounds
+                        if not game.board.check_bounds((x, y)):
+                            continue
+                        
                         cell = new_grid[x * self.height + y]
                         if cell:
                             # Determine whether this tile should have a red display
@@ -330,13 +333,13 @@ class BoundaryInterface():
         return engine.subsurface(self.modes[grid_name], (idx * TILEWIDTH, 0, TILEWIDTH, TILEHEIGHT))
 
     def draw_fog_of_war(self, surf, full_size, cull_rect):
-        if game.level_vars['_fog_of_war']:
+        if game.level_vars.get('_fog_of_war', False) or game.board.fog_region_set:
             if not self.fog_of_war_surf:
                 self.fog_of_war_surf = engine.create_surface(full_size, transparent=True)
                 for y in range(self.height):
                     for x in range(self.width):
                         if not game.board.in_vision((x, y)):
-                            if game.level_vars['_fog_of_war'] == 2:
+                            if game.level_vars.get('_fog_of_war_type', 0) == 2:
                                 image = self.fog_of_war_tile2
                             else:
                                 image = self.fog_of_war_tile1

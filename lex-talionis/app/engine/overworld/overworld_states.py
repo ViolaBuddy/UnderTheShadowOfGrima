@@ -34,7 +34,7 @@ class OverworldFreeState(MapState):
         from .overworld_movement_manager import OverworldMovementManager
 
         if not overworld_to_load:
-            if game.game_vars['_next_overworld_nid'] is not None:
+            if game.game_vars.get('_next_overworld_nid') is not None:
                 overworld_to_load: NID = game.game_vars['_next_overworld_nid']
             else:
                 # we really shouldn't be here
@@ -54,9 +54,15 @@ class OverworldFreeState(MapState):
 
     def start(self):
         OverworldFreeState.set_up_overworld_game_state()
+        logging.info('Fade in Overworld Music')
+        song = game.overworld_controller.music
+        fade = game.game_vars.get('_phase_music_fade_ms', 400)
+        if song:
+            get_sound_thread().fade_in(song.nid, fade_in=fade, from_start=True)
+        else:
+            get_sound_thread().fade_to_pause(fade_out=fade)
         self.begin_time = engine.get_time()
 
-        # the free state requires that the main party is initialized.
         if not game.overworld_controller.selected_party_node():
             # if it's not, add it to the current level's node and forcibly enable it
             try:
@@ -88,7 +94,9 @@ class OverworldFreeState(MapState):
         game.cursor.take_input()
 
         if event == 'BACK': # flick our cursor back to our party
-            game.cursor.set_pos(game.overworld_controller.selected_party_node().position)
+            party_loc = game.overworld_controller.selected_party_node()
+            if party_loc:
+                game.cursor.set_pos(party_loc.position)
 
         elif event == 'SELECT': # this is where the fun begins
             cur_pos = game.cursor.position
@@ -120,6 +128,7 @@ class OverworldFreeState(MapState):
                         game.camera.set_center(party_node.position[0], party_node.position[1])
                         game.state.change('overworld_movement')
                         movement.queue(game.movement)
+
             else:   # clicked on empty space, trigger the general menu
                 get_sound_thread().play_sfx('Select 5')
                 game.state.change('overworld_game_option_menu')
@@ -194,8 +203,8 @@ class OverworldNodeTransition(State):
         if not game.events.trigger(triggers.OnOverworldNodeSelect(game.overworld_controller.selected_entity.nid, game.game_vars['_target_node_nid']), level_nid=game.overworld_controller.next_level):
             # no events, then just queue the move
             movement = OverworldMove(game.overworld_controller.selected_entity.nid,
-                                    game.game_vars['_target_node_nid'],
-                                    game.overworld_controller)
+                                     game.game_vars['_target_node_nid'],
+                                     game.overworld_controller)
             game.state.change('overworld_movement')
             movement.queue(game.movement)
         return 'repeat'
@@ -216,8 +225,8 @@ class OverworldLevelTransition(State):
         if not game.events.trigger(triggers.LevelSelect(), level_nid=game.overworld_controller.next_level):
             # no events, then just queue the move
             movement = OverworldMove(game.overworld_controller.selected_entity.nid,
-                                    game.overworld_controller.node_by_level(game.overworld_controller.next_level).nid,
-                                    game.overworld_controller)
+                                     game.overworld_controller.node_by_level(game.overworld_controller.next_level).nid,
+                                     game.overworld_controller)
             game.state.change('overworld_movement')
             movement.queue(game.movement)
         return 'repeat'

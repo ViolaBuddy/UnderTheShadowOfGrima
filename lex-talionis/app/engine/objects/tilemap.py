@@ -10,8 +10,9 @@ from app.engine import engine, image_mods, particles, animations
 class LayerObject():
     transition_speed = 333
 
-    def __init__(self, nid: str, parent):
+    def __init__(self, nid: str, foreground: bool, parent):
         self.nid: str = nid
+        self.foreground: bool = foreground
         self.parent = parent
         self.visible = True
         self.terrain = {}
@@ -115,7 +116,7 @@ class LayerObject():
 class TileMapObject(Prefab):
     def __init__(self):
         super().__init__()
-        self.weather: List[particles.ParticleSystem] = []
+        self.weather: List[particles.SimpleParticleSystem] = []
         self.animations: List[animations.MapAnimation] = []
         self.high_animations: List[animations.MapAnimation] = []
         self.width: int = 0
@@ -133,7 +134,7 @@ class TileMapObject(Prefab):
 
         # Stitch together image layers
         for layer in prefab.layers:
-            new_layer = LayerObject(layer.nid, self)
+            new_layer = LayerObject(layer.nid, layer.foreground, self)
             # Terrain
             for coord, terrain_nid in layer.terrain_grid.items():
                 new_layer.terrain[coord] = terrain_nid
@@ -212,11 +213,18 @@ class TileMapObject(Prefab):
                 return layer.nid
         return None
 
+    def background_layers(self) -> List[LayerObject]:
+        return [layer for layer in self.layers if not layer.foreground]
+
+    def foreground_layers(self) -> List[LayerObject]:
+        return [layer for layer in self.layers if layer.foreground]
+
     def get_full_image(self, cull_rect):
         image = engine.create_surface((cull_rect[2], cull_rect[3]))
         engine.fill(image, COLORKEY)
         engine.set_colorkey(image, COLORKEY)
-        for layer in self.layers:
+        layers = self.background_layers()
+        for layer in layers:
             if (layer.visible or layer.state == 'fade_out') and \
                     layer.should_draw(cull_rect):
                 main_image = layer.get_image(cull_rect)
@@ -225,6 +233,31 @@ class TileMapObject(Prefab):
                 if autotile_image:
                     image.blit(autotile_image, (0, 0))
         return image
+
+    def get_foreground_image(self, cull_rect):
+        image = engine.create_surface((cull_rect[2], cull_rect[3]), transparent=True)
+        layers = self.foreground_layers()
+        for layer in layers:
+            if (layer.visible or layer.state == 'fade_out') and \
+                    layer.should_draw(cull_rect):
+                main_image = layer.get_image(cull_rect)
+                image.blit(main_image, (0, 0))
+                autotile_image = layer.get_autotile_image(cull_rect)
+                if autotile_image:
+                    image.blit(autotile_image, (0, 0))
+        return image
+
+    def save_screenshot(self):
+        import os
+        from datetime import datetime
+
+        if not os.path.isdir('screenshots'):
+            os.mkdir('screenshots')
+        current_time = str(datetime.now()).replace(' ', '_').replace(':', '.')
+
+        image = self.get_full_image((0, 0, self.width * TILEWIDTH, self.height * TILEHEIGHT))
+        image.blit(self.get_foreground_image((0, 0, self.width * TILEWIDTH, self.height * TILEHEIGHT)))
+        engine.save_surface(image, 'screenshots/LT_%s_tilemap.png' % current_time)
 
     def update(self):
         for layer in self.layers:

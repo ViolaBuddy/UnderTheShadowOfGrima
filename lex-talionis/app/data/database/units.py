@@ -1,42 +1,44 @@
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, List, Optional, Tuple
 
 from app.data.database.weapons import WexpGain
 from app.utilities.data import Data, Prefab
 from app.utilities.typing import NID
+from app.utilities import str_utils
 
 
 @dataclass
 class UnitPrefab(Prefab):
-    nid: str = None
-    name: str = None
-    desc: str = None
-    variant: str = None
+    nid: str
+    name: Optional[str] = None
+    desc: Optional[str] = None
+    variant: Optional[str] = None
 
-    level: int = None
+    level: int = 1
     klass: str = None
 
-    tags: list = None
+    tags: List[NID] = field(default_factory=list)
     bases: Dict[NID, int] = field(default_factory=dict)
     growths: Dict[NID, int] = field(default_factory=dict)
-    starting_items: list = field(default_factory=list)  # of tuples (ItemPrefab, droppable)
+    stat_cap_modifiers: Dict[NID, int] = field(default_factory=dict)
+    starting_items: List[Tuple[NID, bool]] = field(default_factory=list)  # (item_nid, droppable)
 
-    learned_skills: list = None
+    learned_skills: List[List] = field(default_factory=list) # each list is a tuple (level, skill_nid)
     unit_notes: list = field(default_factory=list)
     wexp_gain: Dict[NID, WexpGain] = field(default_factory=dict)
 
     alternate_classes: list = field(default_factory=list)
 
-    portrait_nid: str = None
-    affinity: str = None
+    portrait_nid: Optional[NID] = None
+    affinity: Optional[NID] = None
 
     fields: list = field(default_factory=list) # arbitrary field, allow players to fill out anything they want
 
     def get_stat_titles(self):
-        return ["Bases", "Growths"]
+        return ["Bases", "Growths", "Stat Cap Mods"]
 
     def get_stat_lists(self):
-        return [self.bases, self.growths]
+        return [self.bases, self.growths, self.stat_cap_modifiers]
 
     def get_items(self):
         return [i[0] for i in self.starting_items]
@@ -55,7 +57,7 @@ class UnitPrefab(Prefab):
                 skill[1] = new_nid
 
     def save_attr(self, name, value):
-        if name in ('bases', 'growths'):
+        if name in ('bases', 'growths', 'stat_cap_modifiers'):
             return value.copy()  # So we don't make a copy
         elif name == 'learned_skills':
             return [val.copy() for val in value]  # So we don't make a copy
@@ -67,16 +69,18 @@ class UnitPrefab(Prefab):
             return super().save_attr(name, value)
 
     def restore_attr(self, name, value):
-        if name in ('bases', 'growths'):
+        if name in ('bases', 'growths', 'stat_cap_modifiers'):
             if isinstance(value, list):
                 value = {k: v for (k, v) in value}
-            else:
+            elif value:
                 value = value.copy()  # Should be copy so units don't share lists/dicts
-        elif name == 'wexp_gain':
-            if isinstance(value, list):
-                value = {nid: WexpGain(usable, wexp_gain) for (usable, nid, wexp_gain) in value}
             else:
-                value = {k: WexpGain(usable, wexp_gain) for (k, (usable, wexp_gain)) in value.items()}
+                value = {}
+        elif name == 'wexp_gain':
+            if isinstance(value, list):  # DEPRECATED
+                value = {nid: WexpGain(usable, wexp_gain, 251) for (usable, nid, wexp_gain) in value}
+            else:
+                value = {k: WexpGain.restore(v) for (k, v) in value.items()}
         elif name == 'starting_items':
             # Need to convert to item nid + droppable
             value = [i if isinstance(i, list) else [i, False] for i in value]
@@ -87,5 +91,21 @@ class UnitPrefab(Prefab):
             value = super().restore_attr(name, value)
         return value
 
+    @classmethod
+    def default(cls):
+        return cls('0')
+
 class UnitCatalog(Data[UnitPrefab]):
     datatype = UnitPrefab
+
+    def create_new(self, db):
+        nids = [d.nid for d in self]
+        nid = name = str_utils.get_next_name("New Unit", nids)
+        bases = {k: 0 for k in db.stats.keys()}
+        growths = {k: 0 for k in db.stats.keys()}
+        wexp_gain = {weapon_nid: db.weapons.default(db) for weapon_nid in db.weapons.keys()}
+        new_unit = UnitPrefab(nid, name, '', '', 1, db.classes[0].nid,
+                              bases=bases, growths=growths, wexp_gain=wexp_gain)
+        new_unit.fields = []
+        self.append(new_unit)
+        return new_unit

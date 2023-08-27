@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+import random
+from typing import List
+
 import logging
 
 import app.engine.config as cf
@@ -8,6 +13,7 @@ from app.engine import (action, background, battle_animation, combat_calcs,
                         engine, gui, icons, image_mods, item_funcs,
                         item_system, skill_system)
 from app.engine.combat import playback as pb
+from app.engine.combat.playback import PlaybackBrush
 from app.engine.combat.base_combat import BaseCombat
 from app.engine.combat.map_combat import MapCombat
 from app.engine.combat.mock_combat import MockCombat
@@ -19,9 +25,12 @@ from app.engine.objects.item import ItemObject
 from app.engine.objects.unit import UnitObject
 from app.engine.sound import get_sound_thread
 from app.engine.sprites import SPRITES
+from app.engine.graphics.text.text_renderer import render_text, text_width, rendered_text_width
 from app.events import triggers
 from app.data.resources.resources import RESOURCES
 from app.utilities import utils
+from app.utilities.typing import NID
+from app.utilities.enums import HAlignment
 
 
 class AnimationCombat(BaseCombat, MockCombat):
@@ -39,7 +48,7 @@ class AnimationCombat(BaseCombat, MockCombat):
             self.right_item = self.def_item
             self.left = self.attacker
             self.left_item = self.main_item
-        elif self.attacker.team.startswith('enemy') and not self.defender.team.startswith('enemy'):
+        elif self.attacker.team in DB.teams.enemies and self.defender.team not in DB.teams.enemies:
             self.right = self.defender
             self.right_item = self.def_item
             self.left = self.attacker
@@ -66,7 +75,8 @@ class AnimationCombat(BaseCombat, MockCombat):
         self.state_machine = CombatPhaseSolver(
             self.attacker, self.main_item, [self.main_item],
             [self.defender], [[]], [self.defender.position],
-            self.defender, self.def_item, script, total_rounds)
+            self.defender, self.def_item, script, total_rounds,
+            update_stats=self._set_stats)
 
         self.last_update = engine.get_time()
         self.arena_combat = arena_combat
@@ -134,7 +144,7 @@ class AnimationCombat(BaseCombat, MockCombat):
         self.current_battle_anim = None
 
         self.initial_paint_setup()
-        self._set_stats()
+        self._set_stats(self.playback)
 
     def skip(self):
         self._skip = True
@@ -228,7 +238,7 @@ class AnimationCombat(BaseCombat, MockCombat):
             game.cursor.set_pos(self.view_pos)
             if not self._skip:
                 game.state.change('move_camera')
-            self._set_stats()  # For start combat changes
+            self._set_stats(self.playback)  # For start combat changes
 
         elif self.state == 'red_cursor':
             if self._skip or current_time > 400:
@@ -258,7 +268,7 @@ class AnimationCombat(BaseCombat, MockCombat):
 
         elif self.state == 'arena_init':
             self.start_combat()
-            self._set_stats()
+            self._set_stats(self.playback)
             self.pair_battle_animations(0)
             self.bar_offset = 1
             self.name_offset = 1
@@ -314,13 +324,19 @@ class AnimationCombat(BaseCombat, MockCombat):
                 self.state = 'pre_proc'
 
         elif self.state == 'pre_proc':
-            if self.left_battle_anim.done() and self.right_battle_anim.done():
+            if self.left_battle_anim.done() and self.right_battle_anim.done() and \
+                    not self.proc_icons:
                 # These would have happened from pre_combat and start_combat
                 if self.get_from_full_playback('attack_pre_proc'):
                     self.set_up_pre_proc_animation('attack_pre_proc')
                 elif self.get_from_full_playback('defense_pre_proc'):
                     self.set_up_pre_proc_animation('defense_pre_proc')
+                elif self.set_up_other_proc_icons(self.attacker):
+                    pass  # Processing is done in the if check above
+                elif self.set_up_other_proc_icons(self.defender):
+                    pass  # Processing is done in the if check above
                 else:
+                    self.add_proc_icon.memory.clear()
                     self.state = 'begin_phase'
 
         elif self.state == 'begin_phase':
@@ -337,7 +353,7 @@ class AnimationCombat(BaseCombat, MockCombat):
                 logging.debug("Set Up Next State")
                 self.state_machine.setup_next_state()
                 return False
-            self._set_stats()
+            # self._set_stats()
 
             # Set up combat effects (legendary)
             attacker, item, defender, d_item, self.current_battle_anim = self.get_actors()
@@ -358,6 +374,7 @@ class AnimationCombat(BaseCombat, MockCombat):
             elif self.get_from_playback('defense_proc'):
                 self.set_up_proc_animation('defense_proc')
             else:
+                self.add_proc_icon.memory.clear()
                 self.set_up_combat_animation()
 
         elif self.state == 'combat_effect':
@@ -421,13 +438,21 @@ class AnimationCombat(BaseCombat, MockCombat):
             # Get new battle anims
             if not self._skip:
                 if not self.left.is_dying:
-                    self.left_battle_anim = battle_animation.get_battle_anim(self.left, self.left_item, self.distance, allow_revert=True)
+                    new_left_battle_anim = battle_animation.get_battle_anim(self.left, self.left_item, self.distance, allow_revert=True)
+                    if new_left_battle_anim:  # Need to check that the new animation actually exists
+                        self.left_battle_anim = new_left_battle_anim
                 if not self.right.is_dying:
-                    self.right_battle_anim = battle_animation.get_battle_anim(self.right, self.right_item, self.distance, allow_revert=True)
+                    new_right_battle_anim = battle_animation.get_battle_anim(self.right, self.right_item, self.distance, allow_revert=True)
+                    if new_right_battle_anim:
+                        self.right_battle_anim = new_right_battle_anim
                 if self.lp_battle_anim:
-                    self.lp_battle_anim = battle_animation.get_battle_anim(self.left_partner, self.left_partner.get_weapon(), self.distance, allow_revert=True)
+                    new_lp_battle_anim = battle_animation.get_battle_anim(self.left_partner, self.left_partner.get_weapon(), self.distance, allow_revert=True)
+                    if new_lp_battle_anim:
+                        self.lp_battle_anim = new_lp_battle_anim
                 if self.rp_battle_anim:
-                    self.rp_battle_anim = battle_animation.get_battle_anim(self.right_partner, self.right_partner.get_weapon(), self.distance, allow_revert=True)
+                    new_rp_battle_anim = battle_animation.get_battle_anim(self.right_partner, self.right_partner.get_weapon(), self.distance, allow_revert=True)
+                    if new_rp_battle_anim:
+                        self.rp_battle_anim = new_rp_battle_anim
                 # re-pair
                 self.pair_battle_animations(0)
                 if self.left_battle_anim.is_transform():
@@ -451,21 +476,22 @@ class AnimationCombat(BaseCombat, MockCombat):
                     self.right_battle_anim.finish()
                     if self.rp_battle_anim:
                         self.rp_battle_anim.finish()
-                    if self.battle_background and not self._skip:
-                        self.battle_background.fade_out(utils.frames2ms(10))
+                    if self.battle_background:
+                        fade_time = utils.frames2ms(2.5 if self._skip else 10)
+                        self.battle_background.fade_out(fade_time)
                     self.state = 'name_tags_out'
 
         elif self.state == 'name_tags_out':
-            exit_time = utils.frames2ms(10)
+            exit_time = utils.frames2ms(2.5 if self._skip else 10)
             self.name_offset = 1 - current_time / exit_time
-            if self._skip or current_time > exit_time:
+            if current_time > exit_time:
                 self.name_offset = 0
                 self.state = 'all_out'
 
         elif self.state == 'all_out':
-            exit_time = utils.frames2ms(10)
+            exit_time = utils.frames2ms(2.5 if self._skip else 10)
             self.bar_offset = 1 - current_time / exit_time
-            if self._skip or current_time > exit_time:
+            if current_time > exit_time:
                 self.bar_offset = 0
                 self.state = 'fade_out'
 
@@ -478,9 +504,9 @@ class AnimationCombat(BaseCombat, MockCombat):
                 return True
 
         elif self.state == 'arena_out':
-            exit_time = utils.frames2ms(10)
+            exit_time = utils.frames2ms(2.5 if self._skip else 10)
             self.bg_black_progress = 1 - current_time / exit_time
-            if self._skip or current_time > exit_time:
+            if current_time > exit_time:
                 self.bg_black_progress = 0
                 self.finish()
                 self.clean_up2()
@@ -502,25 +528,26 @@ class AnimationCombat(BaseCombat, MockCombat):
     def initial_paint_setup(self):
         crit_flag = DB.constants.value('crit')
         # Left
-        left_color = utils.get_team_color(self.left.team)
+        left_color = self.get_color(self.left.team)
         # Name tag
         self.left_name = SPRITES.get('combat_name_left_' + left_color).copy()
-        if FONT['text-brown'].width(self.left.name) > 52:
-            font = FONT['narrow-brown']
+        if text_width('text', self.left.name) > 52:
+            font = 'narrow'
         else:
-            font = FONT['text-brown']
-        font.blit_center(self.left.name, self.left_name, (30, 8))
+            font = 'text'
+        render_text(self.left_name, [font], [self.left.name], ['brown'], (30, 8), HAlignment.CENTER)
+        # Partner name tag
         if self.lp_battle_anim:
             if self.left.strike_partner:
                 ln = self.left.strike_partner.name
             else:
                 ln = game.get_unit(self.left.traveler).name
             self.lp_name = SPRITES.get('combat_name_left_' + left_color).copy()
-            if FONT['text-brown'].width(ln) > 52:
-                font = FONT['narrow-brown']
+            if text_width('text', ln) > 52:
+                font = 'narrow'
             else:
-                font = FONT['text-brown']
-            font.blit_center(ln, self.lp_name, (30, 8))
+                font = 'text'
+            render_text(self.lp_name, [font], [ln], ['brown'], (30, 8), HAlignment.CENTER)
         # Bar
         if crit_flag:
             self.left_bar = SPRITES.get('combat_main_crit_left_' + left_color).copy()
@@ -528,32 +555,32 @@ class AnimationCombat(BaseCombat, MockCombat):
             self.left_bar = SPRITES.get('combat_main_left_' + left_color).copy()
         if self.left_item:
             name = self.left_item.name
-            if FONT['text-brown'].width(name) > 56:
-                font = FONT['narrow-brown']
+            if text_width('text', name) > 56:
+                font = 'narrow'
             else:
-                font = FONT['text-brown']
-            font.blit_center(name, self.left_bar, (91, 5 + (8 if crit_flag else 0)))
+                font = 'text'
+            render_text(self.left_bar, [font], [name], ['brown'], (WINWIDTH//4 + 31, 5 + (8 if crit_flag else 0)), HAlignment.CENTER)
 
         # Right
-        right_color = utils.get_team_color(self.right.team)
+        right_color = self.get_color(self.right.team)
         # Name tag
         self.right_name = SPRITES.get('combat_name_right_' + right_color).copy()
-        if FONT['text-brown'].width(self.right.name) > 52:
-            font = FONT['narrow-brown']
+        if text_width('text', self.right.name) > 52:
+            font = 'narrow'
         else:
-            font = FONT['text-brown']
-        font.blit_center(self.right.name, self.right_name, (36, 8))
+            font = 'text'
+        render_text(self.right_name, [font], [self.right.name], ['brown'], (36, 8), HAlignment.CENTER)
         if self.rp_battle_anim:
             if self.right.strike_partner:
                 rn = self.right.strike_partner.name
             else:
                 rn = game.get_unit(self.right.traveler).name
             self.rp_name = SPRITES.get('combat_name_right_' + right_color).copy()
-            if FONT['text-brown'].width(rn) > 52:
-                font = FONT['narrow-brown']
+            if text_width('text', rn) > 52:
+                font = 'narrow'
             else:
-                font = FONT['text-brown']
-            font.blit_center(rn, self.rp_name, (36, 8))
+                font = 'text'
+            render_text(self.rp_name, [font], [rn], ['brown'], (36, 8), HAlignment.CENTER)
         # Bar
         if crit_flag:
             self.right_bar = SPRITES.get('combat_main_crit_right_' + right_color).copy()
@@ -561,11 +588,11 @@ class AnimationCombat(BaseCombat, MockCombat):
             self.right_bar = SPRITES.get('combat_main_right_' + right_color).copy()
         if self.right_item:
             name = self.right_item.name
-            if FONT['text-brown'].width(name) > 56:
-                font = FONT['narrow-brown']
+            if text_width('text', name) > 56:
+                font = 'narrow'
             else:
-                font = FONT['text-brown']
-            font.blit_center(name, self.right_bar, (47, 5 + (8 if crit_flag else 0)))
+                font = 'text'
+            render_text(self.right_bar, [font], [name], ['brown'], (WINWIDTH//4 - 13, 5 + (8 if crit_flag else 0)), HAlignment.CENTER)
 
         # Platforms
         if self.left.position:
@@ -627,15 +654,26 @@ class AnimationCombat(BaseCombat, MockCombat):
 
     def _handle_playback(self, sound=True):
         hp_brushes = ('damage_hit', 'damage_crit', 'heal_hit')
+        hit_brushes = ('defense_hit_proc', 'attack_hit_proc')
+        _, _, defender, _, _ = self.get_actors()
         for brush in self.playback:
             if brush.nid in hp_brushes:
                 self.last_update = engine.get_time()
                 self.state = 'hp_change'
                 self.handle_damage_numbers(brush)
+            elif brush.nid in hit_brushes:
+                self.add_proc_icon(brush.unit, brush.skill)
             elif brush.nid == 'hit_sound' and sound and not brush.map_only:
                 play_sound = brush.sound
-                if sound == 'Attack Miss 2':
+                if play_sound == 'Attack Miss 2':
                     play_sound = 'Miss'  # Replace with miss sound
+                if self.special_boss_crit(defender, after_attack=True):
+                    if play_sound.startswith('Attack Hit'):
+                        play_sound = 'Critical Hit ' + str(random.randint(1, 2))
+                    elif play_sound.startswith('Final Hit'):
+                        new_sound = 'Critical Hit ' + str(random.randint(1, 2))
+                        get_sound_thread().play_sfx(new_sound)
+
                 get_sound_thread().play_sfx(play_sound)
 
     def _apply_actions(self):
@@ -674,12 +712,20 @@ class AnimationCombat(BaseCombat, MockCombat):
         self.viewbox = (vb_x, vb_y, vb_width, vb_height)
 
     def start_battle_music(self):
-        attacker_battle = item_system.battle_music(self.attacker, self.main_item, self.defender, 'attack')
-        if self.def_item:
-            defender_battle = item_system.battle_music(self.defender, self.def_item, self.attacker, 'defense')
-        else:
-            defender_battle = None
-        battle_music = game.level.music['%s_battle' % self.attacker.team]
+        attacker_battle = item_system.battle_music(self.attacker, self.main_item, self.defender, 'attack') \
+            or skill_system.battle_music(self.playback, self.attacker, self.main_item, self.defender, 'attack')
+        if not attacker_battle and 'Boss' in self.attacker.tags:
+            attacker_battle = game.level.music.get('boss_battle', None)
+        defender_battle = None
+        if self.defender:
+            if self.def_item:
+                defender_battle = item_system.battle_music(self.defender, self.def_item, self.attacker, 'defense') \
+                or skill_system.battle_music(self.playback, self.defender, self.def_item, self.attacker, 'defense')
+            else:
+                defender_battle = skill_system.battle_music(self.playback, self.defender, self.def_item, self.attacker, 'defense')
+            if not defender_battle and 'Boss' in self.defender.tags:
+                defender_battle = game.level.music.get('boss_battle', None)
+        battle_music = game.level.music.get('%s_battle' % self.attacker.team, None)
         from_start = DB.constants.value('restart_battle_music')
         if attacker_battle:
             self.battle_music = get_sound_thread().battle_fade_in(attacker_battle, from_start=from_start)
@@ -694,7 +740,10 @@ class AnimationCombat(BaseCombat, MockCombat):
     def right_team(self):
         return self.right.team
 
-    def _set_stats(self):
+    def get_color(self, team: NID) -> str:
+        return DB.teams.get(team).combat_color
+
+    def _set_stats(self, playback: List[PlaybackBrush]):
         a_hit = combat_calcs.compute_hit(self.attacker, self.defender, self.main_item, self.def_item, 'attack', self.state_machine.get_attack_info())
         a_mt = combat_calcs.compute_damage(self.attacker, self.defender, self.main_item, self.def_item, 'attack', self.state_machine.get_attack_info())
         if DB.constants.value('crit'):
@@ -739,12 +788,12 @@ class AnimationCombat(BaseCombat, MockCombat):
             d_stats = None
             dp_stats = None
 
-        if self.get_from_playback('attacker_partner_phase'):
+        if any(brush.nid == 'attacker_partner_phase' for brush in playback):
             ta_stats = ap_stats
         else:
             ta_stats = a_stats
 
-        if self.get_from_playback('defender_partner_phase'):
+        if any(brush.nid == 'defender_partner_phase' for brush in playback):
             td_stats = dp_stats
         else:
             td_stats = d_stats
@@ -770,6 +819,16 @@ class AnimationCombat(BaseCombat, MockCombat):
         self.playback.remove(mark)
         self.mark_proc(mark)
 
+    def set_up_other_proc_icons(self, unit) -> bool:
+        """
+        Returns whether it added a proc icon
+        """
+        for skill in unit.skills:
+            if skill_system.get_show_skill_icon(unit, skill):
+                if self.add_proc_icon(unit, skill):
+                    return True
+        return False
+
     def mark_proc(self, mark):
         skill = mark.skill
         unit = mark.unit
@@ -782,18 +841,43 @@ class AnimationCombat(BaseCombat, MockCombat):
             if effect:
                 self.left_battle_anim.add_effect(effect)
 
-        self.add_proc_icon(mark)
+        self.add_proc_icon(unit, skill)
+
+    def add_proc_icon(self, unit, skill) -> bool:
+        """
+        Returns whether it successfully added the proc icon
+        """
+        if skill_system.get_hide_skill_icon(unit, skill):
+            return False
+        if skill.nid in self.add_proc_icon.memory.get(unit.nid, []):
+            return False
+
+        c = False
+        if (unit is self.right or unit is self.right.strike_partner) and self.rp_battle_anim:
+            c = True
+        elif (unit is self.left or unit is self.left.strike_partner) and self.lp_battle_anim:
+            c = True
+        new_icon = gui.SkillIcon(skill, unit is self.right, center=c)
+        self.proc_icons.append(new_icon)
+
+        # Make sure the same proc icon never shows up twice in the same phase
+        if unit.nid not in self.add_proc_icon.memory:
+            self.add_proc_icon.memory[unit.nid] = []
+        self.add_proc_icon.memory[unit.nid].append(skill.nid)
+
         if unit == self.right:
             self.focus_right = True
         else:
             self.focus_right = False
         self.move_camera()
+        return True
+    add_proc_icon.memory = {}
 
-    def special_boss_crit(self, defender):
+    def special_boss_crit(self, defender, after_attack=False):
         return DB.constants.value('boss_crit') and \
             self.get_from_playback('mark_hit') and \
             'Boss' in defender.tags and \
-            self.get_damage() >= defender.get_hp()
+            (defender.get_hp() <= 0 if after_attack else self.get_damage() >= defender.get_hp())
 
     def set_up_combat_animation(self):
         self.state = 'anim'
@@ -844,17 +928,6 @@ class AnimationCombat(BaseCombat, MockCombat):
             for idx, num in enumerate(str_damage):
                 d = gui.DamageNumber(int(num), idx, len(str_damage), left, 'cyan')
                 self.damage_numbers.append(d)
-
-    def add_proc_icon(self, mark):
-        unit = mark.unit
-        skill = mark.skill
-        c = False
-        if (unit is self.right or unit is self.right.strike_partner) and self.rp_battle_anim:
-            c = True
-        elif (unit is self.left or unit is self.left.strike_partner) and self.lp_battle_anim:
-            c = True
-        new_icon = gui.SkillIcon(skill, unit is self.right, center=c)
-        self.proc_icons.append(new_icon)
 
     def get_damage(self) -> int:
         damage_hit_marks = self.get_from_playback('damage_hit')
@@ -1001,7 +1074,7 @@ class AnimationCombat(BaseCombat, MockCombat):
             self.draw_item(right_bar, self.right_item, self.left_item, self.right, self.left, (1, 2 + crit))
         # Stats
         self.draw_stats(left_bar, self.left_stats, (42, 0))
-        self.draw_stats(right_bar, self.right_stats, (WINWIDTH // 2 - 3, 0))
+        self.draw_stats(right_bar, self.right_stats, (WINWIDTH//2 - 3, 0))
 
         bar_trans = 52
         left_pos_x = -3 + self.shake_offset[0]
@@ -1013,8 +1086,8 @@ class AnimationCombat(BaseCombat, MockCombat):
 
         # Guard gauge counter
         if DB.constants.value('pairup') and not DB.constants.value('attack_stance_only'):
-            left_color = utils.get_team_color(self.left.team)
-            right_color = utils.get_team_color(self.right.team)
+            left_color = self.get_color(self.left.team)
+            right_color = self.get_color(self.right.team)
             right_gauge = None
             left_gauge = None
             left_gauge = SPRITES.get('guard_' + left_color).copy()
@@ -1113,24 +1186,28 @@ class AnimationCombat(BaseCombat, MockCombat):
         self.turnwheel_death_messages(all_units)
 
         self.handle_state_stack()
-        game.events.trigger(triggers.CombatEnd(self.attacker, self.defender, self.attacker.position, self.main_item))
+        game.events.trigger(triggers.CombatEnd(self.attacker, self.defender, self.attacker.position, self.main_item, self.full_playback))
         self.handle_item_gain(all_units)
 
         pairs = self.handle_supports(all_units)
         self.handle_support_pairs(pairs)
         self.handle_records(self.full_playback, all_units)
 
+        asp = self.attacker.strike_partner
+        dsp = None
+        if self.defender:
+            dsp = self.defender.strike_partner
+
         self.end_combat()
 
         self.handle_death(all_units)
+
+        self.handle_broken_items(asp, dsp)
 
         self.attacker.built_guard = True
         if self.defender:
             self.defender.strike_partner = None
             self.defender.built_guard = True
-
-        a_broke, d_broke = self.find_broken_items()
-        self.handle_broken_items(a_broke, d_broke)
 
         # Clean up battle anims so we can re-use them later
         self.left_battle_anim.reset_unit()

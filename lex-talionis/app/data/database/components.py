@@ -1,9 +1,12 @@
-from enum import IntEnum
+from enum import Enum, IntEnum
+from typing import Optional
 
 from app.utilities import str_utils
 from app.utilities.data import Data
 
+
 class ComponentType(IntEnum):
+    Bool = 0
     Int = 1
     Float = 2
     String = 3
@@ -26,6 +29,7 @@ class ComponentType(IntEnum):
     CombatAnimation = 21  # Stored as Nid
     EffectAnimation = 22  # Stored as Nid
     Affinity = 23  # Stored as Nid
+    Terrain = 24 # stored as Nid
     Event = 80
     List = 100
     Dict = 101  # Item followed by integer
@@ -33,6 +37,8 @@ class ComponentType(IntEnum):
     MultipleChoice = 103 # item is a string value from a number of choices
     MultipleOptions = 104 # item is a dict of string options with types that can be individually configured
     StringDict = 105  # Item followed by string
+    NewMultipleOptions = 106 # item is a dict of string options with types that can be individually configured
+
 
 def convert_type_from_string(tstr: str, ttype: ComponentType):
     if ttype == ComponentType.Int:
@@ -43,12 +49,12 @@ def convert_type_from_string(tstr: str, ttype: ComponentType):
         return tstr
 
 class Component():
-    nid: str = None
-    desc: str = None
+    nid: str
+    desc: str
     author: str = 'rainlash'
-    expose = None  # Attribute
+    expose: Optional[ComponentType] = None  # Attribute
     paired_with: list = []
-    tag = 'extra'
+    tag: Enum
     value = None
 
     def __init__(self, value=None):
@@ -58,12 +64,12 @@ class Component():
     @property
     def name(self):
         name = self.__class__.__name__
-        return str_utils.camel_case(name)
+        return str_utils.ignore_numbers(str_utils.camel_case(name))
 
     @classmethod
     def class_name(cls):
         name = cls.__name__
-        return str_utils.camel_case(name)
+        return str_utils.ignore_numbers(str_utils.camel_case(name))
 
     def defines(self, function_name):
         return hasattr(self, function_name)

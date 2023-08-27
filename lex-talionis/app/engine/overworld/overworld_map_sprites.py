@@ -53,7 +53,7 @@ class OverworldNodeSprite():
         self.load_sprites()
 
     def load_sprites(self):
-        if not self.map_icon.image:
+        if self.map_icon and not self.map_icon.image:
             self.map_icon.image = engine.image_load(self.map_icon.full_path)
 
     def set_transition(self, new_state):
@@ -205,7 +205,7 @@ class OverworldUnitSprite():
     def load_sprites(self):
         klass: Klass = DB.classes.get(self.unit.klass)
         nid = klass.map_sprite_nid
-        variant = self.unit.variant or (skill_system.change_variant(self.unit) if isinstance(self.unit, UnitObject) else None)
+        variant = skill_system.change_variant(self.unit) if isinstance(self.unit, UnitObject) else None
         if variant:
             nid += variant
         res = RESOURCES.map_sprites.get(nid)

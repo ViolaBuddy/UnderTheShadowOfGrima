@@ -6,13 +6,13 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from app.constants import WINHEIGHT, WINWIDTH
 from app.engine import engine, image_mods
+from app.utilities.enums import HAlignment, VAlignment
 from app.utilities.typing import Color4
 from app.utilities.utils import tclamp, tmult, tuple_add, tuple_sub
 
 from .premade_animations.animation_templates import toggle_anim
 from .ui_framework_animation import UIAnimation, animated
-from .ui_framework_layout import (HAlignment, ListLayoutStyle, UILayoutHandler,
-                                  UILayoutType, VAlignment)
+from .ui_framework_layout import ListLayoutStyle, UILayoutHandler, UILayoutType
 from .ui_framework_styling import UIMetric
 
 CACHED_ATTRIBUTES = ['size', 'height', 'width', 'margin', 'padding', 'offset', 'scroll', 'tsize', 'twidth', 'theight', 'max_width', 'max_height', 'overflow']
@@ -850,7 +850,7 @@ class UIComponent():
         except:
             pass
 
-        if name in CACHED_ATTRIBUTES and not name in UNSETTABLE_ATTRIBUTES:
+        if name in CACHED_ATTRIBUTES and name not in UNSETTABLE_ATTRIBUTES:
             self.props.__setattr__(name, value)
         elif name in UNSETTABLE_ATTRIBUTES:
             return

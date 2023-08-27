@@ -8,10 +8,10 @@ from app.engine import (base_surf, engine, icons, item_funcs,
 from app.engine.fonts import FONT
 from app.engine.game_state import game
 from app.engine.graphics.text.text_renderer import (fix_tags, font_height, render_text,
-                                                    text_width)
+                                                    text_width, remove_tags)
 from app.engine.sprites import SPRITES
 from app.utilities import utils
-from app.utilities.enums import Alignments
+from app.utilities.enums import HAlignment
 from app.utilities.typing import NID
 
 MAX_TEXT_WIDTH = WINWIDTH - 40
@@ -50,9 +50,8 @@ class HelpDialog():
         from app.engine import dialog
         desc = desc.replace('\n', '{br}')
         self.dlg = \
-            dialog.Dialog(desc, num_lines=8, width=self.greatest_line_len + 16, 
-                          font_type=self.font, font_color='black',
-                          draw_cursor=False, speed=0.5)
+            dialog.Dialog.from_style(game.speak_styles.get('__default_help'), desc,
+                                     width=self.greatest_line_len + 16)
         self.dlg.position = (0, (16 if self.name else 0))
 
     def get_width(self):
@@ -63,7 +62,7 @@ class HelpDialog():
 
     def find_num_lines(self, desc: str) -> int:
         '''Returns the number of lines in the description'''
-        # Split on \n, then go through each element in the list 
+        # Split on \n, then go through each element in the list
         # and break it into further strings if too long
         desc = desc.replace('{br}', '\n')
         lines = desc.split("\n")
@@ -144,7 +143,7 @@ class HelpDialog():
 
         help_surf = engine.copy_surface(self.help_surf)
         if self.name:
-            render_text(help_surf, [self.font], [self.name], [], (8, 8))
+            render_text(help_surf, [self.font], [self.name], [game.speak_styles.get('__default_help').font_color], (8, 8))
 
         self.dlg.update()
         self.dlg.draw(help_surf)
@@ -165,6 +164,7 @@ class StatDialog(HelpDialog):
         self.transition_out = 0
 
         desc = text_funcs.translate(desc)
+        self.plain_desc = desc
         self.bonuses = bonuses
 
         self.lines = fix_tags(text_funcs.line_wrap(self.font, desc, 144))
@@ -178,10 +178,27 @@ class StatDialog(HelpDialog):
     def create_dialog(self, desc):
         from app.engine import dialog
         desc = desc.replace('\n', '{br}')
+
+        bonuses = sorted(self.bonuses.items(), key=lambda x: x[0] != 'Base Value')
+        color = game.speak_styles.get('__default_help').font_color
+        for idx, (bonus, val) in enumerate(bonuses):
+            if idx == 0:
+                width = text_width(self.text_font, str(val))
+                desc += '{br}<%s><%s>%s</></>' % (self.text_font, color, str(val))
+            elif val > 0:
+                width = text_width(self.text_font, '+' + str(val))
+                desc += '{br}<%s><green>%s</></>' % (self.text_font, '+' + str(val))
+            elif val < 0:
+                width = text_width(self.text_font, str(val))
+                desc += '{br}<%s><red>%s</></>' % (self.text_font, str(val))
+            else:
+                width = text_width(self.font, str(val))
+                desc += '{br}<%s><%s>%s</></>' % (self.font, color, str(val))
+            desc += '{max_speed}' + ('﹘' * (24 - width)) + '{starting_speed}<%s><%s>%s</></>' % (self.font, color, bonus)
+
         self.dlg = \
-            dialog.Dialog(desc, num_lines=8, width=160, 
-                          font_type=self.font, font_color='black',
-                          draw_cursor=False, speed=0.5)
+            dialog.Dialog.from_style(game.speak_styles.get('__default_help'), desc,
+                                     width=160)
         self.dlg.position = (0, 0)
 
     def draw(self, surf, pos, right=False):
@@ -190,35 +207,10 @@ class StatDialog(HelpDialog):
             self.start_time = time - 16
             self.transition_in = True
             self.transition_out = 0
-            self.create_dialog(self.dlg.plain_text)
+            self.create_dialog(self.plain_desc)
         self.last_time = time
 
         help_surf = engine.copy_surface(self.help_surf)
-        if cf.SETTINGS['text_speed'] > 0:
-            num_characters = int(2 * (time - self.start_time) / float(cf.SETTINGS['text_speed']))
-        else:
-            num_characters = 1000
-
-        for idx, line in enumerate(self.lines):
-            if num_characters > 0:
-                # render_text(help_surf, [self.font], [line[:num_characters]], [], (8, font_height(self.font) * idx + 6))
-                num_characters -= len(line)
-
-        y_height = len(self.lines) * 16
-        bonuses = sorted(self.bonuses.items(), key=lambda x: x[0] != 'Base Value')
-        for idx, (bonus, val) in enumerate(bonuses):
-            if num_characters > 0:
-                top = font_height(self.font) * idx + 8 + y_height
-                if idx == 0:
-                    render_text(help_surf, [self.text_font], [str(val)], [], (8, top))
-                elif val > 0:
-                    render_text(help_surf, [self.text_font], ['+' + str(val)], ['green'], (8, top))
-                elif val < 0:
-                    render_text(help_surf, [self.text_font], [str(val)], ['red'], (8, top))
-                else:
-                    render_text(help_surf, [self.font], [str(val)], [], (8, top))
-                render_text(help_surf, [self.font], [bonus[:num_characters]], [], (32, top))
-                num_characters -= len(bonus)
 
         if self.dlg:
             self.dlg.update()
@@ -283,9 +275,8 @@ class ItemHelpDialog(HelpDialog):
             from app.engine import dialog
             desc = desc.replace('\n', '{br}')
             self.dlg = \
-                dialog.Dialog(desc, font_type=self.font,
-                              width=160, font_color='black',
-                              num_lines=8, draw_cursor=False, speed=0.5)
+                dialog.Dialog.from_style(game.speak_styles.get('__default_help'), desc,
+                                         width=160)
             y_height = 32 if self.num_present > 3 else 16
             self.dlg.position = (0, y_height)
         else:
@@ -300,7 +291,6 @@ class ItemHelpDialog(HelpDialog):
             lines = desc.splitlines()
             self.lines = []
             for line in lines:
-                num = self.find_num_lines(line)
                 line = text_funcs.line_wrap(self.font, line, width)
                 self.lines.extend(line)
         else:
@@ -321,7 +311,7 @@ class ItemHelpDialog(HelpDialog):
         weapon_type = item_system.weapon_type(self.unit, self.item)
         if weapon_type:
             icons.draw_weapon(help_surf, weapon_type, (8, 6))
-        render_text(help_surf, [self.text_font], [str(self.vals[0])], ['blue'], (50, 6), Alignments.RIGHT)
+        render_text(help_surf, [self.text_font], [str(self.vals[0])], ['blue'], (50, 6), HAlignment.RIGHT)
 
         name_positions = [(56, 6), (106, 6), (8, 22), (56, 22), (106, 22)]
         name_positions.reverse()
@@ -333,7 +323,7 @@ class ItemHelpDialog(HelpDialog):
                 name_pos = name_positions.pop()
                 render_text(help_surf, [self.text_font], [n], ['yellow'], name_pos)
                 val_pos = val_positions.pop()
-                render_text(help_surf, [self.text_font], [str(v)], ['blue'], val_pos, Alignments.RIGHT)
+                render_text(help_surf, [self.text_font], [str(v)], ['blue'], val_pos, HAlignment.RIGHT)
 
         if self.dlg:
             self.dlg.update()

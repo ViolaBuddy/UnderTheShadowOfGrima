@@ -67,7 +67,9 @@ def dict_print(d):
         if isinstance(v, dict):
             dict_print(v)
         else:
-            print("{0} : {1}".format(k, v))
+            s = "{0} : {1}".format(k, v)
+            print(s)
+            logging.error(s)
 
 def save_io(s_dict, meta_dict, old_slot, slot, force_loc=None, name=None):
     if name:
@@ -104,7 +106,7 @@ def save_io(s_dict, meta_dict, old_slot, slot, force_loc=None, name=None):
         elif old_slot is not None:
             old_name = 'saves/' + GAME_NID() + '-restart' + str(old_slot) + '.p'
             old_name_meta = old_name + 'meta'
-            if old_name != r_save:
+            if old_name != r_save and os.path.exists(old_name):
                 shutil.copy(old_name, r_save)
                 shutil.copy(old_name_meta, r_save_meta)
 

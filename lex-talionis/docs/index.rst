@@ -53,6 +53,7 @@ Welcome to lt-maker's documentation!
    source/appendix/trigger_reference
    source/appendix/misc_reference
    source/appendix/FAQ
+   source/appendix/Contributing_to_the_LTWiki
 
 Indices and tables
 ==================

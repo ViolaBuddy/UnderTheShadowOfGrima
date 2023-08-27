@@ -3,9 +3,17 @@ from app.data.database.item_components import ItemComponent, ItemTags
 from app.data.database.components import ComponentType
 
 from app.engine.combat import playback as pb
-from app.engine import engine, image_mods, skill_system
+from app.engine import engine, image_mods, item_funcs, skill_system
 
 import logging
+
+class NeverUseBattleAnimation(ItemComponent):
+    nid = 'never_use_battle_animation'
+    desc = "Item will never use a battle animation even if otherwise available"
+    tag = ItemTags.AESTHETIC
+
+    def force_map_anim(self, unit, item):
+        return True
 
 class MapHitAddBlend(ItemComponent):
     nid = 'map_hit_add_blend'
@@ -56,7 +64,7 @@ class MapCastSFX(ItemComponent):
 
 class MapCastAnim(ItemComponent):
     nid = 'map_cast_anim'
-    desc = "Adds a specific animation effect when the item is used. Relevant in map combat situations."
+    desc = "Adds a specific animation effect on the target's tile when the item is used. Relevant in map combat situations."
     tag = ItemTags.AESTHETIC
 
     expose = ComponentType.MapAnimation
@@ -66,6 +74,21 @@ class MapCastAnim(ItemComponent):
 
     def on_miss(self, actions, playback, unit, item, target, target_pos, mode, attack_info):
         playback.append(pb.CastAnim(self.value))
+
+class MapTargetCastAnim(ItemComponent):
+    nid = 'map_target_cast_anim'
+    desc = "Adds a specific animation effect on all units in AoE when the item is used. Relevant in map combat situations."
+    tag = ItemTags.AESTHETIC
+
+    expose = ComponentType.MapAnimation
+
+    def on_hit(self, actions, playback, unit, item, target, target_pos, mode, attack_info):
+        if target:
+            playback.append(pb.TargetCastAnim(self.value, target.position))
+
+    def on_miss(self, actions, playback, unit, item, target, target_pos, mode, attack_info):
+        if target:
+            playback.append(pb.TargetCastAnim(self.value, target.position))
 
 class BattleCastAnim(ItemComponent):
     nid = 'battle_cast_anim'
@@ -88,7 +111,7 @@ class BattleAnimationMusic(ItemComponent):
     def battle_music(self, unit, item, target, mode):
         return self.value
 
-class NoMapCombatDisplay(ItemComponent):
+class NoMapHPDisplay(ItemComponent):
     nid = 'no_map_hp_display'
     desc = "Item does not show full map hp display when used"
     tag = ItemTags.BASE
@@ -112,7 +135,7 @@ class Warning(ItemComponent):
     tag = ItemTags.AESTHETIC
 
     def target_icon(self, target, item, unit) -> str:
-        return 'warning' if skill_system.check_enemy(target, unit) else None
+        return 'warning' if item_funcs.available(unit, item) and skill_system.check_enemy(target, unit) else None
 
 class EvalWarning(ItemComponent):
     nid = 'eval_warning'

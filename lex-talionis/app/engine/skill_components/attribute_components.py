@@ -23,7 +23,7 @@ class TerrainSkill(SkillComponent):
 
     ignore_conditional = True
 
-    def condition(self, unit):
+    def condition(self, unit, item):
         return not 'Flying' in unit.tags
 
 class ClassSkill(SkillComponent):

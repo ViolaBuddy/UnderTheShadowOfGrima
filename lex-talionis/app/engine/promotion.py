@@ -51,7 +51,7 @@ class PromotionChoiceState(State):
         self.animations = []
         self.weapon_icons = []
         for option in self.class_options:
-            anim = battle_animation.get_battle_anim(self.unit, None, klass=option, default_variant=True)
+            anim = battle_animation.get_battle_anim(self.unit, None, klass=option)
             if anim:
                 anim.pair(self, None, True, 0)
             self.animations.append(anim)
@@ -178,7 +178,7 @@ class PromotionChoiceState(State):
 
         self.bg.draw(surf)
 
-        top = 88
+        top = WINHEIGHT - 72
         surf.blit(self.left_platform, (WINWIDTH//2 - self.left_platform.get_width() + self.anim_offset + 52, top))
         surf.blit(self.right_platform, (WINWIDTH//2 + self.anim_offset + 52, top))
         anim = self.animations[self.menu.get_current_index()]
@@ -207,7 +207,10 @@ class ClassChangeChoiceState(PromotionChoiceState):
     name = 'class_change_choice'
 
     def _get_choices(self):
-        if not self.unit.generic:
+        if game.memory.get('promo_options', None):
+            self.class_options = game.memory['promo_options']
+            game.memory['promo_options'] = None
+        elif not self.unit.generic:
             unit_prefab = DB.units.get(self.unit.nid)
             self.class_options = [c for c in unit_prefab.alternate_classes if c != self.unit.klass]
         else:  # Just every class, lol?
@@ -237,18 +240,21 @@ class PromotionState(State, MockCombat):
 
         music = 'music_%s' % self.name
         self.promotion_song = None
-        if DB.constants.value(music):
+        if game.game_vars.get('_' + music):
+            self.promotion_song = \
+                get_sound_thread().fade_in(game.game_vars.get('_' + music), fade_in=50)
+        elif DB.constants.value(music):
             self.promotion_song = \
                 get_sound_thread().fade_in(DB.constants.value(music), fade_in=50)
 
         self.unit = game.memory['current_unit']
-        color = utils.get_team_color(self.unit.team)
+        color = DB.teams.get(self.unit.team).combat_color
 
         # Old Right Animation
         self.right_battle_anim = battle_animation.get_battle_anim(self.unit, None)
         # New Left Animation
         next_class = game.memory['next_class']
-        self.left_battle_anim = battle_animation.get_battle_anim(self.unit, None, klass=next_class, default_variant=True)
+        self.left_battle_anim = battle_animation.get_battle_anim(self.unit, None, klass=next_class)
         self.current_battle_anim = self.right_battle_anim
 
         platform_type = 'Floor'
@@ -337,7 +343,7 @@ class PromotionState(State, MockCombat):
         combat_surf = engine.copy_surface(self.combat_surf)
 
         # Platforms
-        top = 88
+        top = WINHEIGHT - 72
         combat_surf.blit(self.left_platform, (WINWIDTH//2 - self.left_platform.get_width(), top))
         combat_surf.blit(self.right_platform, (WINWIDTH//2, top))
 

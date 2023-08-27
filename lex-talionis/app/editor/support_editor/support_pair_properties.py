@@ -80,11 +80,11 @@ class SupportRankRequirementDelegate(QStyledItemDelegate):
     def createEditor(self, parent, option, index):
         if index.column() in self.float_columns:
             editor = QDoubleSpinBox(parent)
-            editor.setRange(-255, 255)
+            editor.setRange(-65535, 65535)
             return editor
         elif index.column() == self.requirement_column:
             editor = QSpinBox(parent)
-            editor.setRange(0, 255)  # No negative rank unlocks allowed
+            editor.setRange(0, 65535)  # No negative rank unlocks allowed
             return editor
         elif index.column() == self.str_column:
             editor = QLineEdit(parent)

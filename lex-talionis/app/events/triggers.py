@@ -1,13 +1,14 @@
 from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Dict, Tuple
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from app.engine.objects.item import ItemObject
     from app.engine.objects.unit import UnitObject
+    from app.engine.objects.region import RegionObject
+    from app.engine.combat.playback import PlaybackBrush
 
-from app.events.regions import Region
 from app.utilities.typing import NID
 
 
@@ -30,6 +31,7 @@ class GenericTrigger(EventTrigger):
     """A generic trigger containing common fields. Use to trigger
     anonymous events.
     """
+    nid: ClassVar[NID] = None
     unit1: UnitObject = None
     unit2: UnitObject = None
     position: Tuple[int, int] = None
@@ -81,6 +83,14 @@ class LevelSelect(EventTrigger):
     nid: ClassVar[NID] = 'level_select'
 
 @dataclass(init=True)
+class PhaseChange(EventTrigger):
+    """
+    Occurs whenever the phase changes. Check `team` to figure out whose phase it is now.
+    """
+    nid: ClassVar[NID] = 'phase_change'
+    team: NID
+
+@dataclass(init=True)
 class TurnChange(EventTrigger):
     """
     Occurs immediately before turn changes to Player Phase. Useful for dialogue or reinforcements.
@@ -123,7 +133,7 @@ class OnRegionInteract(EventTrigger):
     nid: ClassVar[NID] = 'on_region_interact'
     unit1: UnitObject
     position: Tuple[int, int]
-    region: Region
+    region: RegionObject
 
 @dataclass(init=True)
 class UnitDeath(EventTrigger):
@@ -147,11 +157,13 @@ class UnitWait(EventTrigger):
         unit1: the unit that waited.
         position: the position they waited at.
         region: region under the unit (can be None)
+        actively_chosen: boolean for whether the player actively selected Wait
     """
     nid: ClassVar[NID] = 'unit_wait'
     unit1: UnitObject
     position: Tuple[int, int]
-    region: Region
+    region: Optional[RegionObject]
+    actively_chosen: bool
 
 @dataclass(init=True)
 class UnitSelect(EventTrigger):
@@ -168,26 +180,30 @@ class UnitSelect(EventTrigger):
 @dataclass(init=True)
 class UnitLevelUp(EventTrigger):
     """
-    Occurs after a unit levels up.
+    Occurs whenever a unit reaches the level stat screen.
 
-        unit1: the unit that leveled up
+        unit1: the unit that gained/lost stats.
         stat_changes: a dict containing their stat changes.
+        source: One of ('exp_gain', 'stat_change', 'class_change', 'promote') describing how the unit got to this screen.
     """
     nid: ClassVar[NID] = 'unit_level_up'
     unit1: UnitObject
     stat_changes: Dict[NID, int]
+    source: str
 
 @dataclass(init=True)
 class DuringUnitLevelUp(EventTrigger):
     """
     Occurs during a unit's level-up screen, immediately after stat changes are granted. This event is useful for implementing level-up quotes.
 
-        unit1: the unit that leveled up
+        unit1: the unit that gained/lost stats.
         stat_changes: a dict containing their stat changes.
+        source: One of ('exp_gain', 'stat_change', 'class_change', 'promote') describing how the unit got to this screen.
     """
     nid: ClassVar[NID] = 'during_unit_level_up'
     unit1: UnitObject
     stat_changes: Dict[NID, int]
+    source: str
 
 @dataclass(init=True)
 class CombatStart(EventTrigger):
@@ -204,8 +220,8 @@ class CombatStart(EventTrigger):
     unit1: UnitObject
     unit2: UnitObject
     position: Tuple[int, int]
-    is_animation_combat: bool
     item: ItemObject
+    is_animation_combat: bool
 
 @dataclass(init=True)
 class CombatEnd(EventTrigger):
@@ -216,12 +232,14 @@ class CombatEnd(EventTrigger):
         unit2: the target of the combat (can be None).
         item: the item/ability used by unit1.
         position: contains the position of unit1.
+        playback: a list of the playback brushes from the combat.
     """
     nid: ClassVar[NID] = 'combat_end'
     unit1: UnitObject
     unit2: UnitObject
     position: Tuple[int, int]
     item: ItemObject
+    playback: List[PlaybackBrush]
 
 @dataclass(init=True)
 class OnTalk(EventTrigger):
@@ -284,7 +302,9 @@ class OnBaseStart(EventTrigger):
 @dataclass(init=True)
 class OnTurnwheel(EventTrigger):
     """
-    Occurs after the turnwheel is used.
+    Occurs after the turnwheel is used. Events that happen within are 
+    not recorded within the turnwheel and therefore will not be reversed
+    upon turnwheel activation.
     """
     nid: ClassVar[NID] = 'on_turnwheel'
 
@@ -296,14 +316,22 @@ class OnTitleScreen(EventTrigger):
     nid: ClassVar[NID] = 'on_title_screen'
 
 @dataclass(init=True)
+class OnStartup(EventTrigger):
+    """
+    Occurs whenever the engine starts.
+    """
+    nid: ClassVar[NID] = 'on_startup'
+
+@dataclass(init=True)
 class TimeRegionComplete(EventTrigger):
     """
     Occurs when a time region runs out of time and would be removed.
-
-        region: the region that has run out of time..
+        position: the position of the region that has run out of time.
+        region: the region that has run out of time.
     """
     nid: ClassVar[NID] = 'time_region_complete'
-    region: Region
+    position: Tuple[int, int]
+    region: RegionObject
 
 @dataclass(init=True)
 class OnOverworldNodeSelect(EventTrigger):
@@ -329,9 +357,11 @@ class RoamPressStart(EventTrigger):
     Occurs when the `start` key is pressed in Free Roam.
 
         unit1: The current roam unit.
+        unit2: the closest nearby other unit.
     """
     nid: ClassVar[NID] = 'roam_press_start'
     unit1: UnitObject
+    unit2: UnitObject
 
 @dataclass(init=True)
 class RoamPressInfo(EventTrigger):
@@ -339,9 +369,21 @@ class RoamPressInfo(EventTrigger):
     Occurs when the `info` key is pressed in Free Roam.
 
         unit1: The current roam unit.
-        unit2: the closest nearby other unit, if there is any unit nearby.
+        unit2: the closest nearby other unit.
     """
     nid: ClassVar[NID] = 'roam_press_info'
+    unit1: UnitObject
+    unit2: UnitObject
+
+@dataclass(init=True)
+class RoamPressAux(EventTrigger):
+    """
+    Occurs when the `aux` key is pressed in Free Roam.
+
+        unit1: The current roam unit.
+        unit2: the closest nearby other unit.
+    """
+    nid: ClassVar[NID] = 'roam_press_aux'
     unit1: UnitObject
     unit2: UnitObject
 
@@ -357,7 +399,7 @@ class RoamingInterrupt(EventTrigger):
     nid: ClassVar[NID] = 'roaming_interrupt'
     unit1: UnitObject
     position: Tuple[int, int]
-    region: Region
+    region: RegionObject
 
 @dataclass(init=True)
 class RegionTrigger(EventTrigger):
@@ -374,10 +416,10 @@ class RegionTrigger(EventTrigger):
     nid: NID
     unit1: UnitObject
     position: Tuple[int, int]
-    region: Region
+    region: RegionObject
     item: ItemObject = None
 
-ALL_TRIGGERS = [tclass for tclass in EventTrigger.__subclasses__() if hasattr(tclass, 'nid')]
+ALL_TRIGGERS = [tclass for tclass in EventTrigger.__subclasses__() if hasattr(tclass, 'nid') and tclass is not GenericTrigger]
 
 # _TRIGGER_NAME_MAP = {trigger.nid: trigger for trigger in ALL_TRIGGERS if hasattr(trigger, 'nid')}
 

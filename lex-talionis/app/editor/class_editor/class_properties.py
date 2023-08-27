@@ -5,6 +5,8 @@ from PyQt5.QtWidgets import QWidget, QGridLayout, QLineEdit, \
 from PyQt5.QtGui import QFontMetrics, QIcon
 from PyQt5.QtCore import Qt
 
+from app import dark_theme
+
 from app.data.resources.resources import RESOURCES
 from app.data.database.database import DB
 
@@ -38,11 +40,8 @@ class ClassProperties(QWidget):
         self._data = self.window._data
 
         self.settings = MainSettingsController()
-        theme = self.settings.get_theme(0)
-        if theme == 0:
-            icon_folder = 'icons/icons'
-        else:
-            icon_folder = 'icons/dark_icons'
+        theme = dark_theme.get_theme()
+        icon_folder = theme.icon_dir()
 
         self.current = current
 
@@ -53,39 +52,39 @@ class ClassProperties(QWidget):
         self.icon_edit = ItemIcon80(self)
         main_section.addWidget(self.icon_edit, 0, 0, 2, 2, Qt.AlignHCenter)
 
-        self.nid_box = PropertyBox("Unique ID", NidLineEdit, self)
+        self.nid_box = PropertyBox(_("Unique ID"), NidLineEdit, self)
         self.nid_box.edit.textChanged.connect(self.nid_changed)
         self.nid_box.edit.editingFinished.connect(self.nid_done_editing)
         main_section.addWidget(self.nid_box, 0, 2)
 
-        self.name_box = PropertyBox("Display Name", QLineEdit, self)
+        self.name_box = PropertyBox(_("Display Name"), QLineEdit, self)
 
         self.name_box.edit.textChanged.connect(self.name_changed)
         main_section.addWidget(self.name_box, 1, 2)
 
-        self.desc_box = PropertyBox("Description", QTextEdit, self)
+        self.desc_box = PropertyBox(_("Description"), QTextEdit, self)
         self.desc_box.edit.textChanged.connect(self.desc_changed)
         font_height = QFontMetrics(self.desc_box.edit.font())
         self.desc_box.edit.setFixedHeight(font_height.lineSpacing() * 3 + 20)
         main_section.addWidget(self.desc_box, 2, 0, 1, 2)
 
-        self.movement_box = PropertyBox("Movement Type", ComboBox, self)
+        self.movement_box = PropertyBox(_("Movement Type"), ComboBox, self)
         self.movement_box.edit.addItems(DB.mcost.unit_types)
         self.movement_box.edit.currentIndexChanged.connect(self.movement_changed)
         main_section.addWidget(self.movement_box, 2, 2)
 
-        self.tier_box = PropertyBox("Tier", QSpinBox, self)
+        self.tier_box = PropertyBox(_("Tier"), QSpinBox, self)
         self.tier_box.edit.setRange(0, 5)
         self.tier_box.edit.setAlignment(Qt.AlignRight)
         self.tier_box.edit.valueChanged.connect(self.tier_changed)
         main_section.addWidget(self.tier_box, 3, 0)
 
-        self.promotes_from_box = PropertyBox("Promotes From", ComboBox, self)
-        self.promotes_from_box.edit.addItems(["None"] + DB.classes.keys())
+        self.promotes_from_box = PropertyBox(_("Promotes From"), ComboBox, self)
+        self.promotes_from_box.edit.addItems([_("None")] + DB.classes.keys())
         self.promotes_from_box.edit.activated.connect(self.promotes_from_changed)
         main_section.addWidget(self.promotes_from_box, 3, 1)
 
-        self.max_level_box = PropertyBox("Max Level", QSpinBox, self)
+        self.max_level_box = PropertyBox(_("Max Level"), QSpinBox, self)
         self.max_level_box.edit.setRange(1, 255)
         self.max_level_box.edit.setAlignment(Qt.AlignRight)
         self.max_level_box.edit.valueChanged.connect(self.max_level_changed)
@@ -93,14 +92,14 @@ class ClassProperties(QWidget):
 
         tag_section = QHBoxLayout()
 
-        self.turns_into_box = PropertyBox("Turns Into", MultiSelectComboBox, self)
-        self.turns_into_box.edit.setPlaceholderText("Promotion Options...")
+        self.turns_into_box = PropertyBox(_("Turns Into"), MultiSelectComboBox, self)
+        self.turns_into_box.edit.setPlaceholderText(_("Promotion Options..."))
         self.turns_into_box.edit.addItems(DB.classes.keys())
         self.turns_into_box.edit.updated.connect(self.turns_into_changed)
         tag_section.addWidget(self.turns_into_box)
 
-        self.tag_box = PropertyBox("Tags", MultiSelectComboBox, self)
-        self.tag_box.edit.setPlaceholderText("No tag")
+        self.tag_box = PropertyBox(_("Tags"), MultiSelectComboBox, self)
+        self.tag_box.edit.setPlaceholderText(_("No tag"))
         self.tag_box.edit.addItems(DB.tags.keys())
         self.tag_box.edit.updated.connect(self.tags_changed)
         tag_section.addWidget(self.tag_box)
@@ -111,7 +110,7 @@ class ClassProperties(QWidget):
 
         stat_section = QGridLayout()
 
-        self.class_stat_widget = StatListWidget(self.current, "Stats", parent=self)
+        self.class_stat_widget = StatListWidget(self.current, _("Stats"), parent=self)
         self.class_stat_widget.button.clicked.connect(self.display_averages)
         self.class_stat_widget.model.dataChanged.connect(self.stat_list_model_data_changed)
         self.averages_dialog = None
@@ -119,8 +118,8 @@ class ClassProperties(QWidget):
 
         weapon_section = QHBoxLayout()
 
-        attrs = ("usable", "nid", "wexp_gain")
-        default_weapons = {weapon_nid: DB.weapons.default() for weapon_nid in DB.weapons.keys()}
+        attrs = ("usable", "nid", "wexp_gain", "cap")
+        default_weapons = {weapon_nid: DB.weapons.default(DB) for weapon_nid in DB.weapons.keys()}
         self.wexp_gain_widget = MultiDictWidget(
             default_weapons, "Weapon Experience",
             attrs, WexpGainDelegate, self, model=WexpGainMultiAttrModel)
@@ -129,7 +128,7 @@ class ClassProperties(QWidget):
 
         skill_section = QHBoxLayout()
         attrs = ("level", "skill_nid")
-        self.class_skill_widget = AppendMultiListWidget([], "Class Skills", attrs, LearnedSkillDelegate, self, model=ReverseDoubleListModel)
+        self.class_skill_widget = AppendMultiListWidget([], _("Class Skills"), attrs, LearnedSkillDelegate, self, model=ReverseDoubleListModel)
         skill_section.addWidget(self.class_skill_widget)
 
         field_section = QHBoxLayout()
@@ -139,25 +138,25 @@ class ClassProperties(QWidget):
 
         self.map_sprite_label = QLabel()
         self.map_sprite_label.setMaximumWidth(32)
-        self.map_sprite_box = QPushButton("Choose Map Sprite...")
+        self.map_sprite_box = QPushButton(_("Choose Map Sprite..."))
         self.map_sprite_box.clicked.connect(self.select_map_sprite)
 
         self.map_sprite_auto_box = QPushButton()
         self.map_sprite_auto_box.setIcon(QIcon(f"{icon_folder}/autoassign.png"))
         self.map_sprite_auto_box.setMaximumWidth(32)
-        self.map_sprite_auto_box.setToolTip("Auto-assign map sprite with the same unique ID")
+        self.map_sprite_auto_box.setToolTip(_("Auto-assign map sprite with the same unique ID"))
         self.map_sprite_auto_box.clicked.connect(self.autoselect_map_sprite)
 
         self.combat_anim_label = QLabel()
         self.combat_anim_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        self.combat_anim_box = QPushButton("Choose Combat Animation...")
+        self.combat_anim_box = QPushButton(_("Choose Combat Animation..."))
         self.combat_anim_box.clicked.connect(self.select_combat_anim)
         self.combat_anim_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         self.combat_anim_auto_box = QPushButton()
         self.combat_anim_auto_box.setIcon(QIcon(f"{icon_folder}/autoassign.png"))
         self.combat_anim_auto_box.setMaximumWidth(32)
-        self.combat_anim_auto_box.setToolTip("Auto-assign combat animation with the same unique ID")
+        self.combat_anim_auto_box.setToolTip(_("Auto-assign combat animation with the same unique ID"))
         self.combat_anim_auto_box.clicked.connect(self.autoselect_combat_anim)
         self.combat_anim_auto_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
@@ -364,7 +363,7 @@ class ClassProperties(QWidget):
             self.averages_dialog.set_current(current)
 
         self.class_skill_widget.set_current(current.learned_skills)
-        default_weapons = {weapon_nid: DB.weapons.default() for weapon_nid in DB.weapons.keys()}
+        default_weapons = {weapon_nid: DB.weapons.default(DB) for weapon_nid in DB.weapons.keys()}
         default_weapons.update(current.wexp_gain)
         current.wexp_gain = default_weapons
         self.wexp_gain_widget.set_current(current.wexp_gain)

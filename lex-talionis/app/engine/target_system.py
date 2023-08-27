@@ -4,7 +4,9 @@ from functools import lru_cache
 
 from app.data.database.database import DB
 from app.engine import (combat_calcs, equations, item_funcs, item_system,
-                        line_of_sight, pathfinding, skill_system)
+                        line_of_sight, skill_system)
+from app.engine.movement import movement_funcs
+from app.engine.pathfinding import pathfinding
 from app.engine.game_state import game
 from app.utilities import utils
 
@@ -58,9 +60,9 @@ def get_nearest_open_tile(unit, position):
             magn = _abs(x)
             n1 = position[0] + x, position[1] + r - magn
             n2 = position[0] + x, position[1] - r + magn
-            if game.movement.check_weakly_traversable(unit, n1) and not game.board.get_unit(n1) and not game.movement.check_if_occupied_in_future(n1):
+            if movement_funcs.check_weakly_traversable(unit, n1) and not game.board.get_unit(n1) and not game.movement.check_if_occupied_in_future(n1):
                 return n1
-            elif game.movement.check_weakly_traversable(unit, n2) and not game.board.get_unit(n2) and not game.movement.check_if_occupied_in_future(n2):
+            elif movement_funcs.check_weakly_traversable(unit, n2) and not game.board.get_unit(n2) and not game.movement.check_if_occupied_in_future(n2):
                 return n2
         r += 1
     return None
@@ -73,9 +75,9 @@ def get_nearest_open_tile_rationalization(unit, position, taken_positions):
             magn = _abs(x)
             n1 = position[0] + x, position[1] + r - magn
             n2 = position[0] + x, position[1] - r + magn
-            if game.movement.check_weakly_traversable(unit, n1) and not game.board.get_unit(n1) and not n1 in taken_positions:
+            if movement_funcs.check_weakly_traversable(unit, n1) and not game.board.get_unit(n1) and not n1 in taken_positions:
                 return n1
-            elif game.movement.check_weakly_traversable(unit, n2) and not game.board.get_unit(n2) and not n2 in taken_positions:
+            elif movement_funcs.check_weakly_traversable(unit, n2) and not game.board.get_unit(n2) and not n2 in taken_positions:
                 return n2
         r += 1
     return None
@@ -131,8 +133,8 @@ def get_attacks(unit: UnitObject, item: ItemObject = None, force=False) -> set:
         attacks = get_shell({unit.position}, item_range, game.board.bounds, manhattan_restriction)
 
     return attacks
-
-def _get_possible_attacks(unit, valid_moves, items):
+    
+def _get_all_attacks(unit, valid_moves, items) -> (set, int):
     attacks = set()
     max_range = 0
     for item in items:
@@ -151,9 +153,21 @@ def _get_possible_attacks(unit, valid_moves, items):
                 attacks |= get_shell({unit.position}, item_range, game.board.bounds, manhattan_restriction)
             else:
                 attacks |= get_shell(valid_moves, item_range, game.board.bounds, manhattan_restriction)
-
+    return (attacks, max_range)
+    
+def _get_possible_attacks(unit, valid_moves, items):
+    items_standard, items_ignore_los = [], []
+    for item in items:
+        (items_standard, items_ignore_los)[item_system.ignore_line_of_sight(unit, item)].append(item)
+    # First get all attacks by items that obey line of sight
+    attacks, max_range = _get_all_attacks(unit, valid_moves, items_standard)
+    # max_range is used only for making line of sight calculation faster
+    # Filter away those that aren't in line of sight
     if DB.constants.value('line_of_sight'):
         attacks = set(line_of_sight.line_of_sight(valid_moves, attacks, max_range))
+    # Now get all attacks by items that ignore line of sight
+    attacks2, _ = _get_all_attacks(unit, valid_moves, items_ignore_los)
+    attacks |= attacks2
     return attacks
 
 def get_possible_attacks(unit, valid_moves) -> set:
@@ -179,42 +193,52 @@ def find_potential_range(unit, weapon=True, spell=False, boundary=False) -> set:
             potential_range.add(rng)
     return potential_range
 
-def get_valid_moves(unit, force=False) -> set:
+def get_valid_moves(unit, force=False, witch_warp=True) -> set:
     # Assumes unit is on the map
     if not force and unit.finished:
         return set()
-    from app.engine.movement import MovementManager
-    mtype = MovementManager.get_movement_group(unit)
+    mtype = movement_funcs.get_movement_group(unit)
     grid = game.board.get_grid(mtype)
     bounds = game.board.bounds
     height = game.board.height
-    pass_through = skill_system.pass_through(unit)
-    ai_fog_of_war = DB.constants.value('ai_fog_of_war')
-    pathfinder = pathfinding.Djikstra(game.board.rationalize_pos(unit.position), grid, bounds, height, unit.team, pass_through, ai_fog_of_war)
+    start_pos = unit.position
+    pathfinder = pathfinding.Djikstra(start_pos, grid, bounds, height, unit.team)
     movement_left = equations.parser.movement(unit) if force else unit.movement_left
 
-    valid_moves = pathfinder.process(game.board, movement_left)
+    if skill_system.pass_through(unit):
+        can_move_through = lambda team, adj: True
+    else:
+        can_move_through = game.board.can_move_through
+    valid_moves = pathfinder.process(can_move_through, movement_left)
     valid_moves.add(unit.position)
-    witch_warp = set(skill_system.witch_warp(unit))
-    valid_moves |= witch_warp
+    if witch_warp:
+        witch_warp = set(skill_system.witch_warp(unit))
+        valid_moves |= witch_warp
     return valid_moves
 
 def get_path(unit, position, ally_block=False, use_limit=False, free_movement=False) -> list:
-    from app.engine.movement import MovementManager
-    mtype = MovementManager.get_movement_group(unit)
+    mtype = movement_funcs.get_movement_group(unit)
     grid = game.board.get_grid(mtype)
     start_pos = unit.position
-    if free_movement:
-        start_pos = game.board.rationalize_pos(start_pos)
 
     bounds = game.board.bounds
     height = game.board.height
-    pass_through = skill_system.pass_through(unit)
-    ai_fog_of_war = DB.constants.value('ai_fog_of_war')
-    pathfinder = pathfinding.AStar(start_pos, position, grid, bounds, height, unit.team, pass_through, ai_fog_of_war, free_movement)
+
+    if skill_system.pass_through(unit) or free_movement:
+        can_move_through = lambda team, adj: True
+    else:
+        if ally_block:
+            can_move_through = game.board.can_move_through_ally_block
+        else:
+            can_move_through = game.board.can_move_through
+
+    if free_movement:
+        pathfinder = pathfinding.ThetaStar(start_pos, position, grid, bounds, height, unit.team)
+    else:
+        pathfinder = pathfinding.AStar(start_pos, position, grid, bounds, height, unit.team)
 
     limit = unit.movement_left if use_limit else None
-    path = pathfinder.process(game.board, ally_block=ally_block, limit=limit)
+    path = pathfinder.process(can_move_through, limit=limit)
     if path is None:
         return []
     return path
@@ -225,7 +249,7 @@ def check_path(unit, path) -> bool:
     for pos in path[:-1]:  # Don't need to count the starting position
         if prev_pos and pos not in get_adjacent_positions(prev_pos):
             return False
-        mcost = game.movement.get_mcost(unit, pos)
+        mcost = movement_funcs.get_mcost(unit, pos)
         movement -= mcost
         if movement < 0:
             return False
@@ -253,6 +277,15 @@ def travel_algorithm(path, moves, unit, grid):
         through_path -= 1
     return path[-(through_path + 1)]  # Travel as far as we can
 
+def targets_in_range(unit: UnitObject, item: ItemObject) -> set:
+    '''
+    Taking a unit and an item, finds a set of
+    positions that are within range
+    '''
+    possible_targets = item_system.valid_targets(unit, item)
+    item_range = item_funcs.get_range(unit, item)
+    return {t for t in possible_targets if utils.calculate_distance(unit.position, t) in item_range}
+
 def get_valid_targets(unit, item=None) -> set:
     """
     Determines all the valid targets given use of the item
@@ -273,12 +306,11 @@ def get_valid_targets(unit, item=None) -> set:
             if not valid_targets:
                 return set()
             all_targets |= valid_targets
-        # If not enough legal targets, also no legal targets
-        if not item_system.allow_same_target(unit, item) and len(all_targets) < len(item.subitems):
+        if not item_system.allow_same_target(unit, item) and len(all_targets) < sum(1 if item_system.allow_less_than_max_targets(unit, si) else item_system.num_targets(unit, si) for si in item.subitems):
             return set()
 
     # Handle regular item targeting
-    all_targets = item_system.valid_targets(unit, item)
+    all_targets = targets_in_range(unit, item)
     valid_targets = set()
     for position in all_targets:
         splash = item_system.splash(unit, item, position)
@@ -286,16 +318,26 @@ def get_valid_targets(unit, item=None) -> set:
         if valid:
             valid_targets.add(position)
     # Fog of War
-    if unit.team == 'player' or DB.constants.value('ai_fog_of_war'):
-        valid_targets = {position for position in valid_targets if game.board.in_vision(position, unit.team)}
+    if (unit.team == 'player' or DB.constants.value('ai_fog_of_war')) and not item_system.ignore_fog_of_war(unit, item):
+        valid_targets = {
+            position for position in valid_targets if
+            game.board.in_vision(position, unit.team) or 
+            unit.position == position or  # Can always target self
+            (game.board.get_unit(position) and 'Tile' in game.board.get_unit(position).tags) # Can always targets Tiles
+        }
     # Line of Sight
-    if DB.constants.value('line_of_sight'):
+    if DB.constants.value('line_of_sight') and not item_system.ignore_line_of_sight(unit, item):
         item_range = item_funcs.get_range(unit, item)
         if item_range:
             max_item_range = max(item_range)
             valid_targets = set(line_of_sight.line_of_sight([unit.position], valid_targets, max_item_range))
         else: # I think this is impossible to happen, as it is checked in various places above in this function
             valid_targets = set()
+    # Make sure we have enough targets to satisfy the item
+    if not item_system.allow_same_target(unit, item) and \
+            not item_system.allow_less_than_max_targets(unit, item) and \
+            len(valid_targets) < item_system.num_targets(unit, item):
+        return set()
     return valid_targets
 
 def get_valid_targets_recursive_with_availability_check(unit, item) -> set:
@@ -376,9 +418,10 @@ def find_strike_partners(attacker, defender, item):
     return attacker_partner, defender_partner
 
 def strike_partner_formula(allies: list, attacker, defender, mode, attack_info):
-    '''This is the formula for the best choice to make
+    '''
+    This is the formula for the best choice to make
     when autoselecting strike partners
-    It returns a new list!'''
+    '''
     if not allies:
         return None
     damage = [combat_calcs.compute_assist_damage(ally, defender, ally.get_weapon(), defender.get_weapon(), mode, attack_info) for ally in allies]

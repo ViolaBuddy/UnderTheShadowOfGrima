@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from app.utilities.data import Data, Prefab
 from app.utilities import str_utils
 
-from app.data.database.constants import Constant, ConstantCatalog
+from app.data.database.constants import Constant, ConstantCatalog, ConstantType
 
 @dataclass
 class SupportRank(Prefab):
@@ -113,23 +113,24 @@ class AffinityCatalog(Data[Affinity]):
     datatype = Affinity
 
 constants = ConstantCatalog([
-    Constant('combat_convos', 'Allow support conversations in combat', bool, True),
-    Constant('base_convos', 'Allow support conversations in base', bool, False),
-    Constant("battle_buddy_system", "Allows characters to swap current support bonus partner in base", bool, False),
-    Constant('bonus_method', 'How are support bonuses calculated?', ("No Bonus", "Use Personal Affinity Bonus", "Use Partner's Affinity Bonus", "Use Average of Affinity Bonuses", "Use Sum of Affinity Bonuses"), "Use Average of Affinity Bonuses"),
-    Constant('bonus_range', "How far do a support's effects reach (0 - can both attack same enemy, 99 - entire map)", int, 3),
-    Constant('growth_range', "How close to partner for support growth (0 - can both attack same enemy, 99 - entire map)", int, 1),
-    Constant('chapter_points', "Points gained on ending chapter with both alive", int, 0, 'growth'),
-    Constant('end_turn_points', "Points gained on ending turn in growth range", int, 1, 'growth'),
-    Constant('combat_points', "Points gained on combat in growth range", int, 0, 'growth'),
-    Constant('interact_points', "Points gained on interacting with partner", int, 0, 'growth'),
-    Constant('pairup_points', "Points gained on combat with a pairup partner", int, 0, 'growth'),
-    Constant('bonus_ally_limit', "Limit to number of support bonuses that can be active at once (0 - No limit)", int, 0, 'limit'),
-    Constant("rank_limit", "Limit to number of support ranks allowed per character (0 - No limit)", int, 5, 'limit'),
-    Constant("highest_rank_limit", "Limit to number of highest rank supports allowed on one character (0 - No limit)", int, 1, 'limit'),
-    Constant("ally_limit", "Limit to number of allies that can be supported with per character (0 - No limit)", int, 0, 'limit'),
-    Constant("point_limit_per_chapter", "Limit to number of points gained in a chapter (0 - No limit)", int, 0, 'limit'),
-    Constant("rank_limit_per_chapter", "Limit to number of ranks gained in a chapter (0 - No limit)", int, 1, 'limit')
+    Constant('combat_convos', 'Allow support conversations in combat', ConstantType.BOOL, True),
+    Constant('base_convos', 'Allow support conversations in base', ConstantType.BOOL, False),
+    Constant("battle_buddy_system", "Allows characters to swap current support bonus partner in base", ConstantType.BOOL, False),
+    Constant('break_supports_on_death', "Break supports on death (applies with Permadeath only)", ConstantType.BOOL, True),
+    Constant('bonus_method', 'How are support bonuses calculated?', ["No Bonus", "Use Personal Affinity Bonus", "Use Partner's Affinity Bonus", "Use Average of Affinity Bonuses", "Use Sum of Affinity Bonuses"], "Use Average of Affinity Bonuses"),
+    Constant('bonus_range', "How far do a support's effects reach (0 - can both attack same enemy, 99 - entire map)", ConstantType.INT, 3),
+    Constant('growth_range', "How close to partner for support growth (0 - can both attack same enemy, 99 - entire map)", ConstantType.INT, 1),
+    Constant('chapter_points', "Points gained on ending chapter with both alive", ConstantType.INT, 0, 'growth'),
+    Constant('end_turn_points', "Points gained on ending turn in growth range", ConstantType.INT, 1, 'growth'),
+    Constant('combat_points', "Points gained on combat in growth range", ConstantType.INT, 0, 'growth'),
+    Constant('interact_points', "Points gained on interacting with partner", ConstantType.INT, 0, 'growth'),
+    Constant('pairup_points', "Points gained on combat with a pairup partner", ConstantType.INT, 0, 'growth'),
+    Constant('bonus_ally_limit', "Limit to number of support bonuses that can be active at once (0 - No limit)", ConstantType.INT, 0, 'limit'),
+    Constant("rank_limit", "Limit to number of support ranks allowed per character (0 - No limit)", ConstantType.INT, 5, 'limit'),
+    Constant("highest_rank_limit", "Limit to number of highest rank supports allowed on one character (0 - No limit)", ConstantType.INT, 1, 'limit'),
+    Constant("ally_limit", "Limit to number of allies that can be supported with per character (0 - No limit)", ConstantType.INT, 0, 'limit'),
+    Constant("point_limit_per_chapter", "Limit to number of points gained in a chapter (0 - No limit)", ConstantType.INT, 0, 'limit'),
+    Constant("rank_limit_per_chapter", "Limit to number of ranks gained in a chapter (0 - No limit)", ConstantType.INT, 1, 'limit')
 ])
 
 class SupportRankRequirement(SupportRankBonus):

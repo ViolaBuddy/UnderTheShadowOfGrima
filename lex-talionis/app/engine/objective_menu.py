@@ -9,6 +9,7 @@ from app.engine.fonts import FONT
 from app.engine.sound import get_sound_thread
 from app.engine.state import State
 from app.engine import engine, background, base_surf, text_funcs, evaluate, icons, menus
+from app.engine.objects.unit import UnitObject
 from app.engine.game_state import game
 from app.engine.fluid_scroll import FluidScroll
 
@@ -29,7 +30,7 @@ class ObjectiveMenuState(State):
     def get_surfaces(self) -> list:
         surfaces = []
 
-        name_back_surf = SPRITES.get('chapter_select_green')
+        name_back_surf = SPRITES.get('chapter_select_green').copy()
         # Text
         big_font = FONT['chapter-green']
         center = (name_back_surf.get_width()//2, name_back_surf.get_height()//2 - big_font.height//2)
@@ -136,11 +137,7 @@ class ObjectiveMenuState(State):
         # Party Leader info bg
         bg_surf(136, 62, (132, 100), 'menu_bg_white')
 
-        # Determine party leader
-        if game.level.roam:
-            unit = game.get_unit(game.level.roam_unit)
-        else:
-            unit = game.get_unit(game.get_party().leader_nid)
+        unit = self.determine_party_leader()
 
         # ChibiPortraitSurf
         chibi = engine.create_surface((96, WINHEIGHT + 24), transparent=True)
@@ -169,6 +166,23 @@ class ObjectiveMenuState(State):
         surfaces.append((HitPoints_surf, (WINWIDTH - 42 - HitPoints_surf.get_width(), 134)))
 
         return surfaces
+
+    def determine_party_leader(self) -> UnitObject:
+        if game.is_roam():
+            unit = game.get_roam_unit()
+        else:
+            unit = game.get_unit(game.get_party().leader_nid)
+
+        if not unit:
+            # Try for a lord
+            all_units = game.get_units_in_party()
+            lord_units = [unit for unit in all_units if 'Lord' in unit.tags]
+            if lord_units:
+                unit = lord_units[0]
+            elif all_units:
+                unit = all_units[0]
+
+        return unit
 
     def take_input(self, event):
         first_push = self.fluid.update()
@@ -201,12 +215,10 @@ class ObjectiveMenuState(State):
 
         # Map Sprite
         # Determine party leader
-        if game.level.roam:
-            unit = game.get_unit(game.level.roam_unit)
-        else:
-            unit = game.get_unit(game.get_party().leader_nid)
-        mapsprite = unit.sprite.create_image('passive')
-        surf.blit(mapsprite, (124, 82))
+        unit = self.determine_party_leader()
+        if unit:
+            mapsprite = unit.sprite.create_image('passive')
+            surf.blit(mapsprite, (124, 82))
 
         # Playtime
         time = datetime.timedelta(milliseconds=game.playtime)

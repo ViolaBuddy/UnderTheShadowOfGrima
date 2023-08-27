@@ -85,8 +85,8 @@ class PaletteMenu(QListWidget):
 
             item = QListWidgetItem(self)
             pf = PaletteWidget(idx, combat_anim, self)
-            pf.palette_name_changed.connect(self.palette_name_changed)
-            pf.palette_nid_changed.connect(self.palette_nid_changed)
+            pf.palette_name_changed.connect(self.change_palette_name)
+            pf.palette_nid_changed.connect(self.change_palette_nid)
             self.palette_widgets.append(pf)
             item.setSizeHint(pf.minimumSizeHint())
             self.addItem(item)
@@ -103,16 +103,22 @@ class PaletteMenu(QListWidget):
     def get_palette(self):
         if not self.combat_anim.palettes:
             return None
-        self.palette_nid_changed(self.current_idx)
-        return self.combat_anim.palettes[self.current_idx][1]
+        # self.palette_nid_changed(self.current_idx)
+        assert self.current_idx < len(self.combat_anim.palettes), "%d %d" % (self.current_idx, len(self.combat_anim.palettes))
+        palette = self.combat_anim.palettes[self.current_idx][1]
+        return palette
 
     def get_palette_widget(self):
         return self.palette_widgets[self.current_idx]
 
-    def palette_name_changed(self, idx):
+    def change_palette_name(self, idx):
         self.combat_anim.palettes[idx][0] = self.palette_widgets[idx].name_label.text()
 
-    def palette_nid_changed(self, idx):
+    def change_palette_nid(self, idx):
+        if len(self.palette_widgets) <= idx:
+            print("Error: Number of palette widgets %d is <= %d" % (len(self.palette_widgets), idx))
+        if len(self.combat_anim.palettes) <= idx:
+            print("Error: Number of palettes %d is <= %d" % (len(self.combat_anim.palettes), idx))
         self.combat_anim.palettes[idx][1] = self.palette_widgets[idx].palette_box.currentText()
 
     def clear(self):
