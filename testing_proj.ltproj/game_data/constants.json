@@ -64,6 +64,10 @@
         true
     ],
     [
+        "overworld_start",
+        false
+    ],
+    [
         "unit_notes",
         true
     ],
@@ -78,6 +82,10 @@
     [
         "growth_info",
         true
+    ],
+    [
+        "glancing_hit",
+        false
     ],
     [
         "backpropagate_difficulty_growths",
@@ -118,6 +126,10 @@
     [
         "auto_promote",
         false
+    ],
+    [
+        "promote_skill_inheritance",
+        true
     ],
     [
         "promote_level_reset",
@@ -317,10 +329,6 @@
     ],
     [
         "dark_sprites",
-        false
-    ],
-    [
-        "glancing_hit",
         false
     ]
 ]

@@ -17,7 +17,7 @@ class BuildCharge(SkillComponent):
         self.skill.data['charge'] = 0
         self.skill.data['total_charge'] = self.value
 
-    def condition(self, unit):
+    def condition(self, unit, item):
         return self.skill.data['charge'] >= self.skill.data['total_charge']
 
     def on_end_chapter(self, unit, skill):
@@ -49,7 +49,7 @@ class DrainCharge(SkillComponent):
         self.skill.data['charge'] = self.value
         self.skill.data['total_charge'] = self.value
 
-    def condition(self, unit):
+    def condition(self, unit, item):
         return self.skill.data['charge'] > 0
 
     def on_end_chapter(self, unit, skill):
@@ -65,7 +65,7 @@ class DrainCharge(SkillComponent):
     def cooldown(self):
         return self.skill.data['charge'] / self.skill.data['total_charge']
 
-class ChargesPerTurn(DrainCharge, SkillComponent):
+class ChargesPerTurn(DrainCharge):
     nid = 'charges_per_turn'
     desc = "Skill will have a number of charges that are refreshed each turn"
     tag = SkillTags.CHARGE
@@ -78,6 +78,21 @@ class ChargesPerTurn(DrainCharge, SkillComponent):
     def on_endstep(self, actions, playback, unit):
         value = self.skill.data['total_charge']
         action.do(action.SetObjData(self.skill, 'charge', value))
+
+class UpkeepChargeIncrease(SkillComponent):
+    nid = 'upkeep_charge_increase'
+    desc = "Increases charge of skill each upkeep"
+    tag = SkillTags.CHARGE
+
+    expose = ComponentType.Int
+    value = 5
+
+    ignore_conditional = True
+
+    def on_upkeep(self, actions, playback, unit):
+        new_value = self.skill.data['charge'] + self.value
+        new_value = min(new_value, self.skill.data['total_charge'])
+        action.do(action.SetObjData(self.skill, 'charge', new_value))
 
 def get_marks(playback, unit, item):
     from app.data.database.database import DB
@@ -124,7 +139,7 @@ class CombatChargeIncreaseByStat(SkillComponent):
 
 class GainMana(SkillComponent):
     nid = 'gain_mana'
-    desc = "Gain X Mana on use"
+    desc = "Gain mana at the beginning of each combat with a target."
     tag = SkillTags.CHARGE
     author = 'KD'
 
@@ -151,7 +166,7 @@ class CostMana(SkillComponent):
 
     ignore_conditional = True
 
-    def condition(self, unit):
+    def condition(self, unit, item):
         return unit.current_mana >= self.value
 
     def start_combat(self, playback, unit, item, target, mode):
@@ -169,5 +184,5 @@ class CheckMana(SkillComponent):
 
     ignore_conditional = True
 
-    def condition(self, unit):
+    def condition(self, unit, item):
         return unit.current_mana >= self.value

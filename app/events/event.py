@@ -1,41 +1,45 @@
 from __future__ import annotations
+from app.engine.movement.unit_path_movement_component import UnitPathMovementComponent
 from app.engine.objects.item import ItemObject
+from app.engine.objects.skill import SkillObject
 from app.engine.text_evaluator import TextEvaluator
 
 import logging
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple, Optional
 
 import app.engine.config as cf
 import app.engine.graphics.ui_framework as uif
 from app.constants import WINHEIGHT, WINWIDTH
 from app.data.database.database import DB
-from app.engine import (action, dialog, engine, evaluate,
-                        static_random, target_system, item_funcs)
+from app.engine import (action, background, dialog, engine, evaluate,
+                        target_system, image_mods, item_funcs)
 from app.engine.game_state import GameState
+from app.engine.movement import movement_funcs
 from app.engine.objects.overworld import OverworldNodeObject
 from app.engine.objects.unit import UnitObject
 from app.engine.sound import get_sound_thread
 from app.events import event_commands, triggers
+from app.events.event_parser import EventParser
 from app.events.event_portrait import EventPortrait
-from app.utilities import str_utils, utils
-from app.utilities.typing import NID
+from app.utilities import str_utils, utils, static_random
+from app.utilities.typing import NID, Color3
 
 class Event():
-    true_vals = ('t', 'true', '1', 'y', 'yes')
+    true_vals = ('t', 'true', 'True', '1', 'y', 'yes')
 
-    skippable = {"speak", "wait", "bop_portrait",
-                 "sound", "location_card", "credits", "ending"}
+    skippable = {"wait", "bop_portrait", "sound",
+                 "location_card", "credits", "ending"}
 
     def __init__(self, nid, commands, trigger: triggers.EventTrigger, game: GameState = None):
-        self._transition_speed = 250
-        self._transition_color = (0, 0, 0)
+        self._transition_speed: int = 250
+        self._transition_color: Color3 = (0, 0, 0)
 
         self.nid = nid
-        self.commands: List[event_commands.EventCommand] = commands.copy()
-        self.command_idx = 0
+        self.command_queue: List[event_commands.EventCommand] = []
 
         self.background = None
 
+        self.trigger = trigger
         event_args = trigger.to_args()
         self.unit = event_args.get('unit1', None)
         self.unit2 = event_args.get('unit2', None)
@@ -51,6 +55,7 @@ class Event():
         self._generic_setup()
 
         self.text_evaluator = TextEvaluator(self.logger, self.game, self.unit, self.unit2, self.position, self.local_args)
+        self.parser = EventParser(nid, commands.copy(), self.text_evaluator)
 
     def _generic_setup(self):
         self.portraits: Dict[str, EventPortrait] = {}
@@ -58,6 +63,8 @@ class Event():
         self.other_boxes: List[Tuple[NID, Any]] = []
         self.overlay_ui = uif.UIComponent.create_base_component()
         self.overlay_ui.name = self.nid
+        self.foreground_overlay_ui = uif.UIComponent.create_base_component()
+        self.foreground_overlay_ui.name = self.nid
 
         self.prev_state = None
         self.state = 'processing'
@@ -72,15 +79,13 @@ class Event():
         self.do_skip = False
         self.super_skip = False
 
-        self.if_stack = [] # Keeps track of how many ifs we've encountered while searching for the bad ifs 'end'.
-        self.parse_stack = [] # Keeps track of whether we've encountered a truth this level or not
-
         # For transition
         self.transition_state = None
         self.transition_progress = 0
         self.transition_update = 0
-        self.transition_speed = self._transition_speed
-        self.transition_color = self._transition_color
+        self.transition_speed: int = self._transition_speed
+        self.transition_color: Color3 = self._transition_color
+        self.transition_background: Optional[background.PanoramaBackground] = None
 
         # For map animations
         self.animations = []
@@ -108,14 +113,12 @@ class Event():
     def save(self):
         ser_dict = {}
         ser_dict['nid'] = self.nid
-        ser_dict['commands'] = self.commands
-        ser_dict['command_idx'] = self.command_idx
         ser_dict['unit1'] = self.unit.nid if self.unit else None
         ser_dict['unit2'] = self.unit2.nid if self.unit2 else None
         ser_dict['position'] = self.position
+        ser_dict['command_queue'] = self.command_queue
         ser_dict['local_args'] = {k: action.Action.save_obj(v) for k, v in self.local_args.items()}
-        ser_dict['if_stack'] = self.if_stack
-        ser_dict['parse_stack'] = self.parse_stack
+        ser_dict['parser_state'] = self.parser.save()
         return ser_dict
 
     @classmethod
@@ -125,13 +128,14 @@ class Event():
         position = ser_dict['position']
         local_args = ser_dict.get('local_args', {})
         local_args = {k: action.Action.restore_obj(v) for k, v in local_args.items()}
-        commands = ser_dict['commands']
         nid = ser_dict['nid']
-        self = cls(nid, commands, triggers.GenericTrigger(unit, unit2, position, local_args), game)
-        self.command_idx = ser_dict['command_idx']
-        self.if_stack = ser_dict['if_stack']
-        self.parse_stack = ser_dict['parse_stack']
+        self = cls(nid, [], triggers.GenericTrigger(unit, unit2, position, local_args), game)
+        self.command_queue = ser_dict['command_queue']
+        self.parser = EventParser.restore(ser_dict['parser_state'], self.text_evaluator)
         return self
+
+    def finished(self):
+        return self.parser.finished() and not self.command_queue
 
     def update(self):
         # update all internal updates, remove the ones that are finished
@@ -161,7 +165,7 @@ class Event():
                     break
 
             elif self.state == 'processing':
-                if self.command_idx >= len(self.commands):
+                if self.finished():
                     self.end()
                 else:
                     self.process()
@@ -172,7 +176,13 @@ class Event():
                 if self.text_boxes:
                     if self.text_boxes[-1].is_done():
                         if dialog_log:
-                            action.do(action.LogDialog(self.text_boxes[-1]))
+                            speaker = self.text_boxes[-1].speaker
+                            plain_text = self.text_boxes[-1].plain_text
+                            action.do(action.LogDialog(speaker, plain_text))
+                        self.state = 'processing'
+                        if self.text_boxes[-1].is_complete():
+                            self.text_boxes.pop()
+                    elif self.text_boxes[-1].is_paused():
                         self.state = 'processing'
                 else:
                     self.state = 'processing'
@@ -181,7 +191,7 @@ class Event():
                 self.state = 'processing'
 
             elif self.state == 'almost_complete':
-                if not self.game.movement or len(self.game.movement) <= 0:
+                if not self.game.movement or not any([c.grid_move for c in self.game.movement.moving_entities]):
                     self.state = 'complete'
 
             elif self.state == 'complete':
@@ -267,8 +277,16 @@ class Event():
         # Fade to black
         if self.transition_state:
             s = engine.create_surface((WINWIDTH, WINHEIGHT), transparent=True)
-            s.fill((*self.transition_color, int(255 * self.transition_progress)))
+            if self.transition_background:
+                self.transition_background.draw(s)
+                s = image_mods.make_translucent(s, 1 - self.transition_progress)
+            else:
+                s.fill((*self.transition_color, int(255 * self.transition_progress)))
             surf.blit(s, (0, 0))
+
+        # draw all achievements
+        ui_surf = self.foreground_overlay_ui.to_surf()
+        surf.blit(ui_surf, (0, 0))
 
         return surf
 
@@ -276,140 +294,21 @@ class Event():
         self.state = 'almost_complete'
 
     def process(self):
-        while self.command_idx < len(self.commands) and self.state == 'processing':
-            command = self.commands[self.command_idx]
+        while self.state == 'processing':
+            if not self.command_queue:
+                next_command = self.parser.fetch_next_command()
+                if not next_command:
+                    break
+                self.command_queue.append(next_command)
+            command = self.command_queue.pop(0)
             self.logger.debug("Run Event Command: %s", command)
             try:
-                if self.handle_conditional(command):
-                    if self.handle_loop(command):
-                        pass  # Just builds the next commands
-                    elif self.do_skip and command.nid in self.skippable:
-                        pass
-                    else:
-                        self.run_command(command)
-                self.command_idx += 1
+                if self.do_skip and command.nid in self.skippable:
+                    pass
+                else:
+                    self.run_command(command)
             except Exception as e:
                 raise Exception("Event execution failed with error in command %s" % command) from e
-
-    def handle_loop(self, command: event_commands.EventCommand) -> bool:
-        """
-        Returns true if a loop was found
-        """
-        self.logger.disabled = False
-        if command.nid == 'for':
-            self.logger.info('%s: %s, %s', command.nid, command.parameters, command.chosen_flags)
-            show_warning = True
-            if 'no_warn' in command.chosen_flags:
-                show_warning = False
-            iterator_nid = command.parameters['Nid']
-            cond = command.parameters['Expression']
-            cond = self._evaluate_all(cond)
-            try:
-                arg_list = self.text_evaluator.direct_eval(cond)
-                arg_list = [self._object_to_str(arg) for arg in arg_list]
-            except Exception as e:
-                self.logger.error("%s: Could not evaluate {%s} in %s" % (e, command.parameters['Expression'], command.to_plain_text()))
-                return True
-            if not arg_list:
-                if show_warning:
-                    self.logger.warning("Arg list is empty for: %s in %s" % (command.parameters['Expression'], command.to_plain_text()))
-
-            # template and paste all commands inside the for loop
-            # to find the correct endf, we'll need to make sure that
-            # every nested for-loop is accounted for
-            internal_fors = 0
-
-            curr_idx = self.command_idx + 1
-            curr_command = self.commands[curr_idx]
-            looped_commands: List[event_commands.EventCommand] = []
-            while curr_command.nid != 'endf' or internal_fors > 0:
-                if curr_command.nid == 'for':
-                    internal_fors += 1
-                if curr_command.nid == 'endf':
-                    internal_fors -= 1
-                looped_commands.append(curr_command)
-                curr_idx += 1
-                if curr_idx >= len(self.commands):
-                    self.logger.error("%s: could not find endf command for loop %s" % ('handle_conditional', cond))
-                    return True
-                curr_command = self.commands[curr_idx]
-
-            # remove the initial for-loop, as we've templated out all the child fors
-            self.commands = self.commands[:self.command_idx + 1] + self.commands[curr_idx:]
-            for arg in reversed(arg_list):
-                for command in reversed(looped_commands):
-                    new_command = command.__class__.copy(command)
-                    if iterator_nid:
-                        new_command.parameters = {k: v.replace('{' + iterator_nid + '}', arg) for k, v in new_command.parameters.items()}
-                    self.commands.insert(self.command_idx + 1, new_command)
-            return True
-        # Skip endf command here
-        elif command.nid == 'endf':
-            return True
-        return False
-
-    def _get_truth(self, command: event_commands.EventCommand) -> bool:
-        try:
-            cond = command.parameters['Expression']
-            cond = self._evaluate_all(cond)
-            truth = bool(self.text_evaluator.direct_eval(cond))
-        except Exception as e:
-            self.logger.error("%s: Could not evaluate {%s} in %s" % (e, cond, command.to_plain_text()))
-            truth = False
-        self.logger.info("Result: %s" % truth)
-        return truth
-
-    def handle_conditional(self, command) -> bool:
-        """
-        Returns true if the processor should be processing this command
-        """
-        self.logger.disabled = False
-        if command.nid == 'if':
-            self.logger.info('%s: %s, %s', command.nid, command.parameters, command.chosen_flags)
-            if not self.if_stack or self.if_stack[-1]:
-                truth = self._get_truth(command)
-                self.if_stack.append(truth)
-                self.parse_stack.append(truth)
-            else:
-                self.if_stack.append(False)
-                self.parse_stack.append(True)
-            return False
-        elif command.nid == 'elif':
-            self.logger.info('%s: %s, %s', command.nid, command.parameters, command.chosen_flags)
-            if not self.if_stack:
-                self.logger.error("Syntax Error somewhere in script. 'elif' needs to be after if statement.")
-                return False
-            # If we haven't encountered a truth yet
-            if not self.parse_stack[-1]:
-                truth = self._get_truth(command)
-                self.if_stack[-1] = truth
-                self.parse_stack[-1] = truth
-            else:
-                self.if_stack[-1] = False
-            return False
-        elif command.nid == 'else':
-            self.logger.info('%s: %s, %s', command.nid, command.parameters, command.chosen_flags)
-            if not self.if_stack:
-                self.logger.error("Syntax Error somewhere in script. 'else' needs to be after if statement.")
-                return False
-            # If the most recent is False but the rest below are non-existent or true
-            if not self.parse_stack[-1]:
-                self.if_stack[-1] = True
-                self.parse_stack[-1] = True
-            else:
-                self.if_stack[-1] = False
-            return False
-        elif command.nid == 'end':
-            self.logger.info('%s: %s, %s', command.nid, command.parameters, command.chosen_flags)
-            if self.if_stack:
-                self.if_stack.pop()
-            if self.parse_stack:
-                self.parse_stack.pop()
-            return False
-
-        if self.if_stack and not self.if_stack[-1]:
-            return False
-        return True
 
     def skip(self, super_skip=False):
         self.do_skip = True
@@ -430,23 +329,8 @@ class Event():
 
     def run_command(self, command: event_commands.EventCommand):
         from app.events.function_catalog import get_catalog
-
         self.logger.info('%s: %s, %s', command.nid, command.parameters, command.chosen_flags)
-
-        parameters, flags = event_commands.convert_parse(command, self._evaluate_all)
-
-        # Handle the weird cases where we don't want to handle evaluation
-        if command.nid == 'choice':
-            unevaled_parameters, _ = event_commands.convert_parse(command, None)
-            parameters['Choices'] = unevaled_parameters['Choices']
-        elif command.nid == 'table':
-            unevaled_parameters, _ = event_commands.convert_parse(command, None)
-            parameters['TableData'] = unevaled_parameters['TableData']
-
-        if 'no_warn' in flags:
-            self.logger.disabled = True
-        else:
-            self.logger.disabled = False
+        parameters, flags = command.parameters, command.chosen_flags
         parameters = {str_utils.camel_to_snake(k): v for k, v in parameters.items()}
         self.logger.debug("%s, %s", parameters, flags)
         get_catalog()[command.nid](self, **parameters, flags=flags)
@@ -459,10 +343,16 @@ class Event():
         else:
             return str(obj)
 
-    def _evaluate_all(self, text: str) -> str:
-        return self.text_evaluator._evaluate_all(text)
+    def _queue_command(self, event_command_str: str):
+        try:
+            event_command, _ = event_commands.parse_text_to_command(event_command_str, strict=True)
+            if not event_command:
+                raise SyntaxError("Unable to parse command", ("event.py", 0, 0, event_command_str))
+            self.command_queue.append(event_command)
+        except Exception as e:
+            logging.error('_queue_command: Unable to parse command "%s". %s', event_command_str, e)
 
-    def _place_unit(self, unit, position, entry_type, entry_direc = None):
+    def _place_unit(self, unit, position, entry_type, entry_direc=None):
         position = tuple(position)
         if self.do_skip:
             action.do(action.ArriveOnMap(unit, position))
@@ -502,7 +392,7 @@ class Event():
         if direction == 'west':
             test_pos = (0, position[1])
             for x in offsets:
-                if self.game.movement.check_traversable(unit, test_pos):
+                if movement_funcs.check_traversable(unit, test_pos):
                     final_pos = test_pos
                     break
                 else:
@@ -510,7 +400,7 @@ class Event():
         elif direction == 'east':
             test_pos = (self.game.tilemap.width - 1, position[1])
             for x in offsets:
-                if self.game.movement.check_traversable(unit, test_pos):
+                if movement_funcs.check_traversable(unit, test_pos):
                     final_pos = test_pos
                     break
                 else:
@@ -518,7 +408,7 @@ class Event():
         elif direction == 'north':
             test_pos = (position[0], 0)
             for x in offsets:
-                if self.game.movement.check_traversable(unit, test_pos):
+                if movement_funcs.check_traversable(unit, test_pos):
                     final_pos = test_pos
                     break
                 else:
@@ -526,7 +416,7 @@ class Event():
         elif direction == 'south':
             test_pos = (position[0], self.game.tilemap.height - 1)
             for x in offsets:
-                if self.game.movement.check_traversable(unit, test_pos):
+                if movement_funcs.check_traversable(unit, test_pos):
                     final_pos = test_pos
                     break
                 else:
@@ -553,7 +443,7 @@ class Event():
         return position
 
     def _check_placement(self, unit, position, placement):
-        if not self.game.board.check_bounds(position):
+        if not self.game.tilemap.check_bounds(position):
             self.logger.error("%s: position out of bounds %s", 'check_placement', position)
             return None
         current_occupant = self.game.board.get_unit(position)
@@ -613,10 +503,24 @@ class Event():
         item = [item for item in item_list if (item.nid == item_id or (str_utils.is_int(item_id) and item.uid == int(item_id)))][0]
         return unit, item
 
+    def _get_skill(self, unit_nid: str, skill: str) -> tuple[UnitObject, SkillObject]:
+        unit = self._get_unit(unit_nid)
+        if not unit:
+            self.logger.error("Couldn't find unit with nid %s" % unit_nid)
+            return None, None
+        skill_id = skill
+        skill_list = unit.skills
+        snids = [skill.nid for skill in skill_list]
+        suids = [skill.uid for skill in skill_list]
+        if (skill_id not in snids) and (not str_utils.is_int(skill_id) or not int(skill_id) in suids):
+            self.logger.error("Couldn't find skill with id %s" % skill)
+            return None, None
+        skill = [skill for skill in skill_list if (skill.nid == skill_id or (str_utils.is_int(skill_id) and skill.uid == int(skill_id)))][0]
+        return unit, skill
+
     def _apply_stat_changes(self, unit, stat_changes, flags):
-        klass = DB.classes.get(unit.klass)
         # clamp stat changes
-        stat_changes = {k: utils.clamp(v, -unit.stats[k], klass.max_stats.get(k) - unit.stats[k]) for k, v in stat_changes.items()}
+        stat_changes = {k: utils.clamp(v, -unit.stats[k], unit.get_stat_cap(k) - unit.stats[k]) for k, v in stat_changes.items()}
 
         immediate = 'immediate' in flags
 
@@ -633,7 +537,7 @@ class Event():
     def _parse_pos(self, text: str, is_float=False):
         position = None
         if ',' in text:
-            text = text.replace(')', '').replace('(', '')
+            text = text.replace(')', '').replace('(', '').replace('[', '').replace(']', '')
             if is_float:
                 position = tuple(float(_) for _ in text.split(','))
             else:
@@ -641,7 +545,11 @@ class Event():
         elif text == '{position}':
             position = self.position
         elif not self.game.is_displaying_overworld() and self._get_unit(text):
-            position = self._get_unit(text).position
+            unit = self._get_unit(text)
+            if unit.position:
+                position = unit.position
+            else:
+                position = self.game.get_rescuers_position(unit)
         elif self.game.is_displaying_overworld() and self._get_overworld_location_of_object(text):
             position = self._get_overworld_location_of_object(text).position
         elif text in self.game.level.regions.keys():
@@ -677,3 +585,8 @@ class Event():
                 if node_at_nid:
                     return node_at_nid
         return None
+
+    def _saturate_portrait(self, portrait):
+        for port in self.portraits.values():
+            port.desaturate()
+        portrait.saturate()

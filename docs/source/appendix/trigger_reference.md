@@ -38,7 +38,7 @@ Anywhere `unit1` is a supported field, you can also use `unit`. Anywhere `unit2`
 > `on_region_interact`:  Occurs when a unit interacts with an event region. All event region type events (like Shop, Armory, Visit, etc.) follow this trigger's format.  
 > - **unit1** (`UnitObject`):  the unit that is interacting.
 > - **position** (`Tuple[int, int]`):  the position of the unit.
-> - **region** (`Region`):  the event region.
+> - **region** (`RegionObject`):  the event region.
 
 ---------------------
 > `unit_death`:  Occurs when any unit dies, including generics.  
@@ -50,7 +50,7 @@ Anywhere `unit1` is a supported field, you can also use `unit`. Anywhere `unit2`
 > `unit_wait`:  Occurs when any unit waits.  
 > - **unit1** (`UnitObject`):  the unit that waited.
 > - **position** (`Tuple[int, int]`):  the position they waited at.
-> - **region** (`Region`):  region under the unit (can be None)
+> - **region** (`Optional[RegionObject]`):  region under the unit (can be None)
 
 ---------------------
 > `unit_select`:  Occurs when a unit is selected by the cursor.  
@@ -81,6 +81,7 @@ Anywhere `unit1` is a supported field, you can also use `unit`. Anywhere `unit2`
 > - **unit2** (`UnitObject`):  the target of the combat (can be None).
 > - **item** (`ItemObject`):  the item/ability used by unit1.
 > - **position** (`Tuple[int, int]`):  contains the position of unit1.
+> - **playback** (`List[PlaybackBrush]`):  a list of the playback brushes from the combat.
 
 ---------------------
 > `on_talk`:  This trigger fires when two units "Talk" to one another.  
@@ -118,8 +119,13 @@ Anywhere `unit1` is a supported field, you can also use `unit`. Anywhere `unit2`
 > - No custom fields
 
 ---------------------
-> `time_region_complete`:  Occurs when a time region runs out of time and would be removed.  
-> - **region** (`Region`):  the region that has run out of time..
+> `on_startup`:  Occurs whenever the engine starts. 
+> - No custom fields
+
+---------------------
+> `time_region_complete`:  Occurs when a time region runs out of time and would be removed. 
+> - **position** (`Tuple[int, int]`):  the position of the region that has run out of time.
+> - **region** (`RegionObject`):  the region that has run out of time.
 
 ---------------------
 > `on_overworld_node_select`:  Occurs when an entity is about to issue a move to a node (which may or may not contain the next level, or any level at all). Because of implementation detail, when this event occurs, it supersedes any queued moves. Therefore, the entity will _not move_ to the selected node. Any events that use this trigger should include a scripted move if movement is desired.  
@@ -139,14 +145,14 @@ Anywhere `unit1` is a supported field, you can also use `unit`. Anywhere `unit2`
 > `roaming_interrupt`:  Occurs when the player enters an `interrupt` region on the map.  
 > - **unit1** (`UnitObject`):  The current roam unit.
 > - **position** (`Tuple[int, int]`):  The position of the current roam unit
-> - **region** (`Region`):  The region that was triggered.
+> - **region** (`RegionObject`):  The region that was triggered.
 
 ---------------------
 > `RegionTrigger`:  Special trigger. This trigger has a custom nid, and will be created whenever you make an interactable event region.  
 > - **nid** (`NID`):  the nid of the region
 > - **unit1** (`UnitObject`):  The unit triggering the region
 > - **position** (`Tuple[int, int]`):  The position of the unit triggering the region
-> - **region** (`Region`):  the name of the region that was triggered
+> - **region** (`RegionObject`):  the name of the region that was triggered
 > - **item** (`ItemObject`):  the item used to trigger this region (used with unlock staves and keys)
 
 ---------------------

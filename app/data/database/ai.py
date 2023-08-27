@@ -1,4 +1,5 @@
 from app.utilities.data import Data, Prefab
+from app.utilities import str_utils
 
 AI_ActionTypes = ['None', 'Attack', 'Support', 'Steal', 'Interact', 'Move_to', 'Move_away_from', 'Wait']
 AI_TargetTypes = ['None', 'Enemy', 'Ally', 'Unit', 'Position', 'Event', 'Time']
@@ -70,7 +71,7 @@ class AIPrefab(Prefab):
         return True
 
 class AIBehaviour(Prefab):
-    def __init__(self, action: str, target, view_range: int, target_spec=None, speed=100, desired_proximity=0):
+    def __init__(self, action: str, target, view_range: int, target_spec=None, speed=100, desired_proximity=0, condition=''):
         self.action: str = action
         self.target = target
         self.target_spec = target_spec
@@ -78,6 +79,7 @@ class AIBehaviour(Prefab):
         self.invert_targeting: bool = False
         self.roam_speed = speed
         self.desired_proximity = desired_proximity
+        self.condition: str = condition
 
     @classmethod
     def DoNothing(cls):
@@ -103,3 +105,10 @@ class AIBehaviour(Prefab):
 
 class AICatalog(Data[AIPrefab]):
     datatype = AIPrefab
+
+    def create_new(self, db):
+        nids = [d.nid for d in self]
+        nid = str_utils.get_next_name("New AI", nids)
+        new_ai = AIPrefab(nid, 20)
+        self.append(new_ai)
+        return new_ai

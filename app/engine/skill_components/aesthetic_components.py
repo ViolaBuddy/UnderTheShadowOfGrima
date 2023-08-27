@@ -3,6 +3,7 @@ from app.data.database.components import ComponentType
 
 from app.engine import equations, item_system, item_funcs, skill_system
 from app.engine.combat import playback as pb
+from app.utilities.enums import Strike
 
 class UnitAnim(SkillComponent):
     nid = 'unit_anim'
@@ -11,13 +12,13 @@ class UnitAnim(SkillComponent):
 
     expose = ComponentType.MapAnimation
 
-    def on_add(self, unit, skill):
+    def after_add(self, unit, skill):
         unit.sprite.add_animation(self.value, contingent=True)
 
-    def re_add(self, unit, skill):
+    def after_add_from_restore(self, unit, skill):
         unit.sprite.add_animation(self.value, contingent=True)
 
-    def on_remove(self, unit, skill):
+    def after_remove(self, unit, skill):
         unit.sprite.remove_animation(self.value)
 
     def should_draw_anim(self, unit, skill):
@@ -53,13 +54,23 @@ class UpkeepSound(SkillComponent):
     def on_upkeep(self, actions, playback, unit):
         playback.append(pb.HitSound(self.value))
 
-# Get proc skills working before bothering with this one
 class DisplaySkillIconInCombat(SkillComponent):
     nid = 'display_skill_icon_in_combat'
-    desc = "Displays the skill's icon in combat"
+    desc = "Displays the skill's icon in combat even if it's not a proc skill"
     tag = SkillTags.AESTHETIC
 
-    def display_skill_icon(self, unit) -> bool:
+    def show_skill_icon(self, unit) -> bool:
+        return True
+
+class HideSkillIconInCombat(SkillComponent):
+    nid = 'hide_skill_icon_in_combat'
+    desc = """
+        Hide's the skill's icon in combat even if it's a proc skill.
+        Overrides `display_skill_icon_in_combat` if both are present
+           """
+    tag = SkillTags.AESTHETIC
+
+    def hide_skill_icon(self, unit) -> bool:
         return True
 
 # Show steal icon
@@ -88,7 +99,7 @@ class StealIcon(SkillComponent):
             return False
         return True
 
-class GBAStealIcon(StealIcon, SkillComponent):
+class GBAStealIcon(StealIcon):
     nid = 'gba_steal_icon'
 
     def _item_restrict(self, unit, defender, def_item) -> bool:
@@ -108,9 +119,8 @@ class AlternateBattleAnim(SkillComponent):
     expose = ComponentType.String
     value = 'Critical'
 
-    def after_hit(self, actions, playback, unit, item, target, mode, attack_info):
-        marks = [mark.nid for mark in playback]
-        if 'mark_hit' in marks or 'mark_crit' in marks:
+    def after_strike(self, actions, playback, unit, item, target, mode, attack_info, strike):
+        if strike != Strike.MISS:
             playback.append(pb.AlternateBattlePose(self.value))
 
 class ChangeVariant(SkillComponent):
@@ -121,13 +131,13 @@ class ChangeVariant(SkillComponent):
     expose = ComponentType.String
     value = ''
 
-    def on_add(self, unit, skill):
+    def after_add(self, unit, skill):
         unit.sprite.load_sprites()
 
-    def re_add(self, unit, skill):
+    def after_add_from_restore(self, unit, skill):
         unit.sprite.load_sprites()
 
-    def on_remove(self, unit, skill):
+    def after_remove(self, unit, skill):
         unit.sprite.load_sprites()
 
     def change_variant(self, unit):
@@ -153,3 +163,14 @@ class MapCastAnim(SkillComponent):
 
     def start_combat(self, playback, unit, item, target, mode):
         playback.append(pb.CastAnim(self.value))
+
+class BattleAnimMusic(SkillComponent):
+    nid = 'battle_animation_music'
+    desc = "Uses custom battle music"
+    tag = SkillTags.AESTHETIC
+
+    expose = ComponentType.Music
+    value = None
+
+    def battle_music(self, playback, unit, item, target, mode):
+        return self.value

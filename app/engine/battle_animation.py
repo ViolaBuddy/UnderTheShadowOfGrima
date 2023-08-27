@@ -1,5 +1,4 @@
 from app.constants import WINWIDTH, WINHEIGHT, COLORKEY
-from app.utilities import utils
 from app.data.resources.resources import RESOURCES
 from app.data.database.database import DB
 
@@ -480,6 +479,7 @@ class BattleAnimation():
             self.processing = False
             self.owner.shake()
             self.owner.spell_hit()
+            self.owner.hit_modifiers()
 
         elif command.nid == 'effect':
             effect = values[0]
@@ -789,7 +789,8 @@ def get_palette(anim_prefab: CombatAnimation, unit) -> tuple:
     palettes = anim_prefab.palettes
     palette_names = [palette[0] for palette in palettes]
     palette_nids = [palette[1] for palette in palettes]
-    team_palette = 'Generic%s' % utils.get_team_color(unit.team).capitalize()
+    team_obj = DB.teams.get(unit.team)
+    team_palette = team_obj.combat_variant_palette if team_obj else None
     if unit.name in palette_names:
         idx = palette_names.index(unit.name)
         palette_name = unit.name
@@ -797,6 +798,10 @@ def get_palette(anim_prefab: CombatAnimation, unit) -> tuple:
     elif unit.nid in palette_names:
         idx = palette_names.index(unit.nid)
         palette_name = unit.nid
+        palette_nid = palette_nids[idx]
+    elif unit.variant and unit.variant in palette_names:
+        idx = palette_names.index(unit.variant)
+        palette_name = unit.variant
         palette_nid = palette_nids[idx]
     elif team_palette in palette_names:
         idx = palette_names.index(team_palette)
@@ -809,6 +814,9 @@ def get_palette(anim_prefab: CombatAnimation, unit) -> tuple:
     return palette_name, current_palette
 
 def get_battle_anim(unit, item, distance=1, klass=None, default_variant=False, allow_transform=False, allow_revert=False) -> BattleAnimation:
+    # Some items never want to have a battle anim
+    if item_system.force_map_anim(unit, item):
+        return False
     # Find the right combat animation
     if klass:
         class_obj = DB.classes.get(klass)

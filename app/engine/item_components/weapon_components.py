@@ -1,10 +1,11 @@
 from app.utilities import utils
 from app.data.database.database import DB
+from app.data.database.difficulty_modes import RNGOption
 
 from app.data.database.item_components import ItemComponent, ItemTags
 from app.data.database.components import ComponentType
 
-from app.engine import action, combat_calcs, equations, item_system, skill_system
+from app.engine import action, combat_calcs, equations, item_system, skill_system, unit_funcs
 from app.engine.game_state import game
 from app.engine.combat import playback as pb
 
@@ -22,7 +23,7 @@ class WeaponType(ItemComponent):
         klass = DB.classes.get(unit.klass)
         wexp_gain = klass.wexp_gain.get(self.value)
         if wexp_gain:
-            klass_usable = (wexp_gain.usable or skill_system.wexp_usable_skill(unit, item)) and not skill_system.wexp_unusable_skill(unit, item)
+            klass_usable = self.value in unit_funcs.usable_wtypes(unit)
             return unit.wexp[self.value] > 0 and klass_usable
         return False
 
@@ -116,6 +117,11 @@ class Damage(ItemComponent):
         else:
             damage = combat_calcs.compute_damage(unit, target, item, target.get_weapon(), mode, attack_info)
 
+        # Reduce damage if in Grandmaster Mode
+        if game.mode.rng_choice == RNGOption.GRANDMASTER:
+            hit = utils.clamp(combat_calcs.compute_hit(unit, target, item, target.get_weapon(), mode, attack_info), 0, 100)
+            damage = int(damage * float(hit) / 100)
+
         true_damage = min(damage, target.get_hp())
         actions.append(action.ChangeHP(target, -damage))
 
@@ -131,6 +137,12 @@ class Damage(ItemComponent):
             damage = combat_calcs.compute_assist_damage(unit, target, item, target.get_weapon(), mode, attack_info)
         else:
             damage = combat_calcs.compute_damage(unit, target, item, target.get_weapon(), mode, attack_info)
+
+        # Reduce damage if in Grandmaster Mode
+        if game.mode.rng_choice == RNGOption.GRANDMASTER:
+            hit = utils.clamp(combat_calcs.compute_hit(unit, target, item, target.get_weapon(), mode, attack_info), 0, 100)
+            damage = int(damage * float(hit) / 100)
+
         damage //= 2  # Because glancing hit
 
         true_damage = min(damage, target.get_hp())
@@ -140,6 +152,8 @@ class Damage(ItemComponent):
         playback.append(pb.DamageHit(unit, item, target, damage, true_damage))
         if damage == 0:
             playback.append(pb.HitAnim('MapNoDamage', target))
+        else:
+            playback.append(pb.HitAnim('MapGlancingHit', target))
 
     def on_crit(self, actions, playback, unit, item, target, target_pos, mode, attack_info):
         playback_nids = [brush.nid for brush in playback]
@@ -147,6 +161,11 @@ class Damage(ItemComponent):
             damage = combat_calcs.compute_assist_damage(unit, target, item, target.get_weapon(), mode, attack_info, crit=True)
         else:
             damage = combat_calcs.compute_damage(unit, target, item, target.get_weapon(), mode, attack_info, crit=True)
+
+        # Reduce damage if in Grandmaster Mode (although crit doesn't make much sense with Grandmaster mode)
+        if game.mode.rng_choice == RNGOption.GRANDMASTER:
+            hit = utils.clamp(combat_calcs.compute_hit(unit, target, item, target.get_weapon(), mode, attack_info), 0, 100)
+            damage = int(damage * float(hit) / 100)
 
         true_damage = min(damage, target.get_hp())
         actions.append(action.ChangeHP(target, -damage))
@@ -181,6 +200,9 @@ class Weight(ItemComponent):
     def modify_defense_speed(self, unit, item):
         return -1 * max(0, self.value - equations.parser.constitution(unit))
 
+    def modify_avoid(self, unit, item):
+        return -2 * max(0, self.value - equations.parser.constitution(unit))
+
 class Unwieldy(ItemComponent):
     nid = 'Unwieldy'
     desc = "Item lowers unit's defense by X"
@@ -189,7 +211,7 @@ class Unwieldy(ItemComponent):
     expose = ComponentType.Int
     value = 0
 
-    def modify_defense(self, unit, item):
+    def modify_resist(self, unit, item):
         return -1 * self.value
 
 class StatChange(ItemComponent):
@@ -212,3 +234,11 @@ class CannotDS(ItemComponent):
 
     def cannot_dual_strike(self, unit, item):
         return True
+
+class NoEquip(ItemComponent):
+    nid = 'no_equip'
+    desc = 'Prevents the item from being equipped even when being used as a weapon, similar to Spell behavior.'
+    tag = ItemTags.WEAPON
+    
+    def equippable(self, unit, item):
+        return False

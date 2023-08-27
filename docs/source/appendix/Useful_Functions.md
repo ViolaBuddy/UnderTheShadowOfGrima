@@ -4,6 +4,26 @@ There are a number of useful functions that can be employed in event eval zones 
 function that can query the game state.
 
 
+## Achievements
+
+
+
+#### Has Achievement
+
+    has_achievement(nid) 
+		-> 'bool'
+
+Checks if an achievement is completed
+
+        Args:
+            nid: nid to check for completion
+
+        Returns:
+            bool: if the achievement exists
+        
+  ---------------------
+
+
 ## Items
 
 
@@ -11,7 +31,7 @@ function that can query the game state.
 #### Get Item
 
     get_item(unit, item) 
-		-> 'ItemObject'
+		-> 'Optional[ItemObject]'
 
 Returns a item object by nid.
 
@@ -20,7 +40,7 @@ Returns a item object by nid.
             item: item to check
 
         Returns:
-            ItemObject | None: Item if exists on unit, otherwise None
+            Optional[ItemObject] | None: Item if exists on unit, otherwise None
         
   ---------------------
 
@@ -57,7 +77,7 @@ Example usage:
 #### Any Unit In Region
 
     any_unit_in_region(region, nid=None, team=None, tag=None) 
-		-> 'List[UnitObject]'
+		-> 'bool'
 
 checks if any unit matching the criteria is in the region
 
@@ -110,6 +130,23 @@ Return a list containing the closest player units and their distances.
         Returns:
             List[Tuple[UnitObject, int]]: Returns `num` pairs of `(unit, distance)` to the position.
             Will return fewer if there are fewer player units than `num`.
+        
+  ---------------------
+
+
+#### Get Terrain
+
+    get_terrain(pos) 
+		-> 'Optional[NID]'
+
+Returns the terrain at position, or, if unit is provided,
+        the terrain underneath the unit.
+
+        Args:
+            pos: Position tuple or unit
+
+        Returns:
+            Optional[NID]: the nid of the region, or None if the position is invalid
         
   ---------------------
 
@@ -202,7 +239,7 @@ Checks how many negative skills the unit has.
 #### Get Skill
 
     get_skill(unit, skill) 
-		-> 'SkillObject'
+		-> 'Optional[SkillObject]'
 
 Returns a skill object by nid.
 
@@ -211,7 +248,7 @@ Returns a skill object by nid.
             skill: nid of skill
 
         Returns:
-            SkillObject | None: Skill, if exists on unit, else None.
+            Optional[SkillObject] | None: Skill, if exists on unit, else None.
         
   ---------------------
 
@@ -237,6 +274,24 @@ checks if unit has skill
 
 
 
+#### Get Support Rank
+
+    get_support_rank(unit1, unit2) 
+		-> 'Optional[NID]'
+
+Returns the most recently obtained support rank between two units.
+
+        Args:
+            unit1: unit in the support pair
+            unit2: the other unit in the support pair
+
+        Returns:
+            Rank nid: if the two units have achieved a support rank.
+            none: if the support pair is invalid or no rank has been obtained
+        
+  ---------------------
+
+
 #### Is Dead
 
     is_dead(unit) 
@@ -249,6 +304,45 @@ checks if unit is dead
 
         Returns:
             bool: if the unit has died
+        
+  ---------------------
+
+
+#### U
+
+    u(unit) 
+		-> 'Optional[UnitObject]'
+
+Shorthand for game.get_unit. Fetches the unit object.
+
+        Args:
+            unit: unit nid
+
+        Returns:
+            Optional[UnitObject]: the actual unit object, if exists, else None
+        
+  ---------------------
+
+
+## VARIABLES
+
+
+
+#### V
+
+    v(varname, fallback=None) 
+		-> 'Any'
+
+shorthand for game.level_vars.get and game.game_vars.get. Fetches the variable
+        if game.level_vars and game.game_vars share an identical name,
+        game.level_vars takes priority
+
+        Args:
+            varname: name of the variable
+            fallback: fallback value, if any. Defaults to None
+
+        Returns:
+            Any: the value of the variable
         
   ---------------------
 

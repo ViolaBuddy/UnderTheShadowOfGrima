@@ -1,12 +1,12 @@
 from PyQt5.QtCore import QSize, Qt
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (QHBoxLayout, QLineEdit, QMessageBox, QSpinBox,
-                             QVBoxLayout, QWidget, QDoubleSpinBox)
+                             QVBoxLayout, QWidget, QDoubleSpinBox, QCheckBox)
 
 from app.data.database.difficulty_modes import GrowthOption, PermadeathOption, RNGOption
 from app.editor.stat_widget import StatListWidget
 from app.editor.lib.components.validated_line_edit import NidLineEdit
-from app.extensions.custom_gui import ComboBox, PropertyBox
+from app.extensions.custom_gui import ComboBox, PropertyBox, PropertyCheckBox
 from app.sprites import SPRITES
 from app.utilities import str_utils
 
@@ -85,6 +85,10 @@ class DifficultyModeProperties(QWidget):
         self.promoted_autolevels_fraction_box.edit.setRange(0, 10)
         self.promoted_autolevels_fraction_box.edit.setSingleStep(0.01)
         self.promoted_autolevels_fraction_box.edit.valueChanged.connect(self.promoted_autolevel_fraction_changed)
+        
+        self.start_locked_box = PropertyCheckBox("Start Locked?", QCheckBox, self)
+        self.start_locked_box.setToolTip("Difficulty begins locked and cannot be selected for a new game.")
+        self.start_locked_box.edit.stateChanged.connect(self.start_locked_changed)
 
         main_section = QVBoxLayout()
         main_section.addWidget(self.nid_box)
@@ -98,6 +102,7 @@ class DifficultyModeProperties(QWidget):
         main_section.addWidget(self.boss_stat_widget)
         main_section.addLayout(autolevel_section)
         main_section.addWidget(self.promoted_autolevels_fraction_box)
+        main_section.addWidget(self.start_locked_box)
         self.setLayout(main_section)
 
     def nid_changed(self, text):
@@ -144,6 +149,9 @@ class DifficultyModeProperties(QWidget):
     def promoted_autolevel_fraction_changed(self, index):
         self.current.promoted_autolevels_fraction = float(self.promoted_autolevels_fraction_box.edit.value())
 
+    def start_locked_changed(self, state):
+        self.current.start_locked = bool(state)
+    
     def set_current(self, current):
         self.current = current
         self.nid_box.edit.setText(current.nid)
@@ -165,3 +173,4 @@ class DifficultyModeProperties(QWidget):
         self.boss_autolevels.edit.setValue(current.boss_autolevels)
 
         self.promoted_autolevels_fraction_box.edit.setValue(current.promoted_autolevels_fraction)
+        self.start_locked_box.edit.setChecked(bool(current.start_locked))

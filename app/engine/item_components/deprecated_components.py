@@ -1,11 +1,18 @@
 from __future__ import annotations
-from app.data.database.database import DB
-
-from app.data.database.components import ComponentType
-from app.data.database.item_components import ItemComponent, ItemTags
-from app.engine.game_state import game
 
 import logging
+from typing import Optional
+
+from app.data.database.components import ComponentType
+from app.data.database.database import DB
+from app.data.database.item_components import ItemComponent, ItemTags
+from app.engine import (action, combat_calcs, engine, equations, image_mods, item_system,
+                        skill_system)
+from app.engine.combat import playback as pb
+from app.engine.game_state import game
+from app.utilities import utils
+from app.engine.item_components.utility_components import Heal
+
 
 class EvalTargetRestrict(ItemComponent):
     nid = 'eval_target_restrict'
@@ -92,3 +99,97 @@ class EventAfterCombat(ItemComponent):
                 local_args = {'target_pos': self.target_pos, 'item': item, 'mode': mode}
                 game.events.trigger_specific_event(event_prefab.nid, unit, target, unit.position, local_args)
         self._did_hit = False
+
+class Effective(ItemComponent):
+    nid = 'effective'
+    desc = 'If this item is effective against an enemy its damage value will be increased by the integer chosen here instead. This is not a multiplier, but an addition.'
+    # requires = ['damage']
+    paired_with = ('effective_tag',)
+    tag = ItemTags.DEPRECATED
+
+    expose = ComponentType.Int
+    value = 0
+
+    def init(self, item):
+        item.data['effective'] = self.value
+
+class EffectiveMultiplier(ItemComponent):
+    nid = 'effective_multiplier'
+    desc = 'If this item is effective against an enemy its might will be multiplied by this value and added to total damage.'
+    # requires = ['damage']
+    paired_with = ('effective_tag',)
+    tag = ItemTags.DEPRECATED
+
+    expose = ComponentType.Float
+    value = 1
+
+    def init(self, item):
+        item.data['effective_multiplier'] = self.value
+
+class EffectiveIcon(ItemComponent):
+    nid = 'effective_icon'
+    desc = "Shows the effective icon when appropriate."
+    tag = ItemTags.DEPRECATED
+
+    expose = (ComponentType.List, ComponentType.Tag)
+    value = []
+
+    def _check_negate(self, target) -> bool:
+        # Returns whether it DOES negate the effectiveness
+        # Still need to check negation (Fili Shield, etc.)
+        if any(skill.negate for skill in target.skills):
+            return True
+        for skill in target.skills:
+            # Do the tags match?
+            if skill.negate_tags and skill.negate_tags.value and \
+                    any(tag in self.value for tag in skill.negate_tags.value):
+                return True
+        # No negation, so proceed with effective damage
+        return False
+
+    def item_icon_mod(self, unit, item, target, sprite):
+        if any(tag in target.tags for tag in self.value):
+            if self._check_negate(target):
+                return sprite
+            sprite = image_mods.make_white(sprite.convert_alpha(), abs(250 - engine.get_time()%500)/250)
+        return sprite
+
+    def target_icon(self, target, item, unit) -> bool:
+        if not skill_system.check_enemy(target, unit):
+            return None
+        if self._check_negate(target):
+            return None
+        if any(tag in target.tags for tag in self.value):
+            return 'danger'
+        return None
+
+class EffectiveTag(EffectiveIcon):
+    nid = 'effective_tag'
+    desc = "Item will be considered effective if the targeted enemy has any of the tags listed in this component."
+    # requires = ['damage']
+    tag = ItemTags.DEPRECATED
+
+    expose = (ComponentType.List, ComponentType.Tag)
+    value = []
+
+    def dynamic_damage(self, unit, item, target, mode, attack_info, base_value) -> int:
+        if any(tag in target.tags for tag in self.value):
+            if self._check_negate(target):
+                return 0
+            if item.data.get('effective_multiplier') is not None:
+                might = item_system.damage(unit, item)
+                if might is None:
+                    return 0
+                return int((item.data.get('effective_multiplier') - 1) * might)
+            return item.data.get('effective', 0)
+        return 0
+
+class MagicHeal(Heal):
+    nid = 'magic_heal'
+    desc = "Heals the target for the specified integer + the HEAL equation defined in the equations editor. Will act oddly if no HEAL equation is defined."
+    tag = ItemTags.DEPRECATED
+
+    def _get_heal_amount(self, unit, target):
+        empower_heal = skill_system.empower_heal(unit, target)
+        empower_heal_received = skill_system.empower_heal_received(target, unit)
+        return self.value + equations.parser.heal(unit) + empower_heal + empower_heal_received

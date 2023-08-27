@@ -1,13 +1,15 @@
 import logging
 import math
 
+from app.constants import FRAMERATE
 from app.data.database.database import DB
 from app.engine import (action, combat_calcs, engine, equations, evaluate,
-                        item_funcs, item_system, line_of_sight, pathfinding,
+                        item_funcs, item_system, line_of_sight,
                         skill_system, target_system)
+from app.engine.pathfinding import pathfinding
 from app.engine.combat import interaction
 from app.engine.game_state import game
-from app.engine.movement import MovementManager
+from app.engine.movement import movement_funcs
 from app.events import triggers
 from app.events.regions import RegionType
 from app.utilities import utils
@@ -55,24 +57,31 @@ class AIController():
 
     def set_next_behaviour(self):
         behaviours = DB.ai.get(self.unit.get_ai()).behaviours
-        if self.behaviour_idx < len(behaviours):
-            self.behaviour = behaviours[self.behaviour_idx]
+        while self.behaviour_idx < len(behaviours):
+            next_behaviour = behaviours[self.behaviour_idx]
             self.behaviour_idx += 1
+            if not next_behaviour.condition or \
+                    evaluate.evaluate(next_behaviour.condition, self.unit, position=self.unit.position):
+                self.behaviour = next_behaviour
+                break
         else:
-            self.behaviour = None
             self.behaviour_idx = 0
+            self.behaviour = None
 
     def get_behaviour(self):
         return self.behaviour
+
+    def interrupt(self):
+        self.move_ai_complete = True
+        self.attack_ai_complete = True
+        self.canto_ai_complete = True
 
     def act(self):
         logging.info("AI Act!")
 
         change = False
-        if game.movement.check_region_interrupt(self.unit):
-            self.move_ai_complete = True
-            self.attack_ai_complete = True
-            self.canto_ai_complete = True
+        if movement_funcs.check_region_interrupt(self.unit.position):
+            self.interrupt()
 
         if not self.move_ai_complete:
             if self.think():
@@ -83,6 +92,7 @@ class AIController():
             self.attack_ai_complete = True
         elif not self.canto_ai_complete:
             if self.unit.has_attacked and skill_system.has_canto(self.unit, None):
+                action.do(action.SetMovementLeft(self.unit, skill_system.canto_movement(self.unit, None)))
                 self.canto_retreat()
                 change = self.move()
             self.canto_ai_complete = True
@@ -91,8 +101,9 @@ class AIController():
 
     def move(self):
         if self.goal_position and self.goal_position != self.unit.position:
+            normal_moves = target_system.get_valid_moves(self.unit, witch_warp=False)
             witch_warp = set(skill_system.witch_warp(self.unit))
-            if self.goal_position in witch_warp:
+            if self.goal_position in witch_warp and self.goal_position not in normal_moves:
                 action.do(action.Warp(self.unit, self.goal_position))
             else:
                 path = target_system.get_path(self.unit, self.goal_position)
@@ -110,7 +121,8 @@ class AIController():
             if not item_funcs.available(self.unit, self.goal_item):
                 return False
             if self.goal_item in item_funcs.get_all_items(self.unit):
-                action.do(action.EquipItem(self.unit, self.goal_item))
+                if self.unit.can_equip(self.goal_item):
+                    action.do(action.EquipItem(self.unit, self.goal_item))
             # Highlights
             if item_system.is_weapon(self.unit, self.goal_item):
                 game.highlight.remove_highlights()
@@ -198,7 +210,7 @@ class AIController():
 
     def get_true_valid_moves(self) -> set:
         # Guard AI
-        if self.behaviour.view_range == -1 and not self.unit.ai_group_active:
+        if self.behaviour.view_range == -1 and not game.ai_group_active(self.unit.ai_group):
             return {self.unit.position}
         else:
             valid_moves = target_system.get_valid_moves(self.unit)
@@ -216,7 +228,7 @@ class AIController():
 
         while True:
             # Can spend up to half a frame thinking
-            over_time = engine.get_true_time() - time >= 8
+            over_time: bool = engine.get_true_time() - time >= FRAMERATE/2
             logging.info("Current State: %s", self.state)
 
             if self.state == 'Init':
@@ -257,8 +269,20 @@ class AIController():
                 done, self.goal_target, self.goal_position, self.goal_item = self.inner_ai.run()
                 if done:
                     if self.goal_target:
-                        self.ai_group_ping()
-                        success = True
+                        if self.unit.ai_group and game.get_ai_group(self.unit.ai_group):
+                            ai_group = game.get_ai_group(self.unit.ai_group)
+                            triggered = ai_group.trigger(self.unit.nid, len(game.get_units_in_ai_group(self.unit.ai_group)))
+                            if triggered:
+                                logging.info("AI group %s activate!", self.unit.ai_group)
+                                self.ai_group_ping(ai_group)
+                                success = True
+                            else:
+                                logging.info("AI group %s is not ready to trigger", self.unit.ai_group)
+                                # If we didn't trigger, that means this unit is not ready to participate
+                                self.clean_up()
+                                success = False
+                        else:
+                            success = True
                         self.state = "Done"
                     else:
                         self.inner_ai = self.build_secondary()
@@ -272,8 +296,18 @@ class AIController():
                 if done:
                     if self.goal_position:
                         if self.goal_position != self.unit.position:
-                            self.ai_group_ping()
-                            success = True
+                            if self.unit.ai_group and game.get_ai_group(self.unit.ai_group):
+                                ai_group = game.get_ai_group(self.unit.ai_group)
+                                triggered = ai_group.trigger(self.unit.nid, len(game.get_units_in_ai_group(self.unit.ai_group)))
+                                if triggered:
+                                    self.ai_group_ping(ai_group)
+                                    success = True
+                                else:
+                                    # If we didn't trigger, that means this unit is not ready to participate
+                                    self.clean_up()
+                                    success = False
+                            else:
+                                success = True
                         self.state = "Done"
                     else:
                         self.state = "Init"  # Try another behaviour
@@ -288,16 +322,12 @@ class AIController():
 
         return False
 
-    def ai_group_ping(self):
-        ai_group = self.unit.ai_group
-        if not ai_group:
-            return
+    def ai_group_ping(self, ai_group):
+        action.do(action.AIGroupPing(ai_group.nid))
         for unit in game.units:
-            if unit.team == self.unit.team and unit.ai_group == ai_group:
+            if unit.team == self.unit.team and unit.ai_group == ai_group.nid:
                 if not unit._has_moved and not unit._has_attacked:
                     unit.has_run_ai = False  # So it can be run through the AI state again
-                if not unit.ai_group_active:
-                    action.do(action.AIGroupPing(unit))
 
     def build_primary(self):
         valid_moves = self.get_true_valid_moves()
@@ -352,15 +382,17 @@ class PrimaryAI():
 
     def item_setup(self):
         if self.item_index < len(self.items):
-            logging.info("Testing %s" % self.items[self.item_index])
-            self.unit.equip(self.items[self.item_index])
+            item = self.items[self.item_index]
+            logging.info("Testing %s" % item)
+            if self.unit.can_equip(item):
+                self.unit.equip(item)
             self.get_all_valid_targets()
             self.possible_moves = self.get_possible_moves()
             logging.info(self.possible_moves)
 
     def get_valid_targets(self, unit, item, valid_moves) -> list:
         item_range = item_funcs.get_range(unit, item)
-        ai_targets = item_system.ai_targets(unit, item)
+        ai_targets = item_system.valid_targets(unit, item)
         if len(ai_targets) < 20:
             logging.info("AI Targets: %s", ai_targets)
         filtered_targets = set()
@@ -368,10 +400,16 @@ class PrimaryAI():
         for pos in ai_targets:
             for valid_move in valid_moves:
                 # Determine if we can hit this unit at one of our moves
-                if (utils.calculate_distance(pos, valid_move) in item_range) and \
-                   (not DB.constants.value('ai_fog_of_war') or game.board.in_vision(pos, self.unit.team)):
-                    filtered_targets.add(pos)
-                    break
+                if utils.calculate_distance(pos, valid_move) in item_range:
+                    if DB.constants.value('ai_fog_of_war'):
+                        if game.board.in_vision(pos, unit.team) or \
+                                item_system.ignore_fog_of_war(unit, item) or \
+                                (game.board.get_unit(pos) and 'Tile' in game.board.get_unit(pos).tags):
+                            filtered_targets.add(pos)
+                            break
+                    else:
+                        filtered_targets.add(pos)
+                        break
 
         return list(filtered_targets)
 
@@ -404,7 +442,7 @@ class PrimaryAI():
     def run(self):
         if self.item_index >= len(self.items):
             self.quick_move(self.orig_pos)
-            if self.orig_item:
+            if self.orig_item and self.unit.can_equip(self.orig_item):
                 self.unit.equip(self.orig_item)
             return (True, self.best_target, self.best_position, self.best_item)
 
@@ -426,6 +464,8 @@ class PrimaryAI():
             if len(self.valid_targets) > 10:
                 enemy_positions = {u.position for u in game.units if u.position and skill_system.check_enemy(self.unit, u)}
                 move = utils.farthest_away_pos(self.orig_pos, self.possible_moves, enemy_positions)
+                if not move:
+                    move = self.possible_moves[self.move_index]
             else:
                 move = self.possible_moves[self.move_index]
 
@@ -434,7 +474,7 @@ class PrimaryAI():
 
             # Check line of sight
             line_of_sight_flag = True
-            if DB.constants.value('line_of_sight'):
+            if DB.constants.value('line_of_sight') and not item_system.ignore_line_of_sight(self.unit, item):
                 item_range = item_funcs.get_range(self.unit, item)
                 if item_range:
                     max_item_range = max(item_range)
@@ -484,27 +524,32 @@ class PrimaryAI():
         # Only count main target if it's one of the legal targets
         if main_target and main_target_pos in self.behaviour_targets:
             ai_priority = item_system.ai_priority(self.unit, item, main_target, move)
+            ai_priority_multiplier = skill_system.ai_priority_multiplier(main_target)
+
             # If no ai priority hook defined
             if ai_priority is None:
                 pass
             else:
-                tp += ai_priority
+                total_priority = ai_priority * ai_priority_multiplier
+                tp += total_priority
 
             if item_system.damage(self.unit, item) is not None and \
                     skill_system.check_enemy(self.unit, main_target):
                 ai_priority = self.default_priority(main_target, item, move)
-                tp += ai_priority
+                tp += ai_priority * ai_priority_multiplier
 
         for splash_pos in splash:
             target = game.board.get_unit(splash_pos)
             # Only count splash target if it's one of the legal targets
             if not target or splash_pos not in self.behaviour_targets:
                 continue
-            ai_priority = item_system.ai_priority(self.unit, item, main_target, move)
+            ai_priority = item_system.ai_priority(self.unit, item, target, move)
+            ai_priority_multiplier = skill_system.ai_priority_multiplier(target)
             if ai_priority is None:
                 pass
             else:
-                tp += ai_priority
+                total_priority = ai_priority * ai_priority_multiplier
+                tp += total_priority
 
             if item_system.damage(self.unit, item):
                 accuracy = utils.clamp(combat_calcs.compute_hit(self.unit, target, item, target.get_weapon(), "attack", (0, 0))/100., 0, 1)
@@ -512,9 +557,9 @@ class PrimaryAI():
                 lethality = utils.clamp(raw_damage / float(target.get_hp()), 0, 1)
                 ai_priority = 3 if lethality * accuracy >= 1 else lethality * accuracy
                 if skill_system.check_enemy(self.unit, target):
-                    tp += ai_priority
+                    tp += ai_priority * ai_priority_multiplier
                 elif skill_system.check_ally(self.unit, target):
-                    tp -= ai_priority
+                    tp -= ai_priority * ai_priority_multiplier
         return tp
 
     def default_priority(self, main_target, item, move):
@@ -569,9 +614,9 @@ class PrimaryAI():
         offense_term += crit_term
         defense_term -= target_damage * target_accuracy * (1 - first_strike)
         if offense_term <= 0:
-            if lethality > 0 and DB.constants.value('attack_zero_hit'):
+            if accuracy <= 0 and DB.constants.value('attack_zero_hit'):
                 logging.info("Accuracy is bad, but continuing with stupid AI")
-            elif accuracy > 0 and DB.constants.value('attack_zero_dam'):
+            elif lethality <= 0 and DB.constants.value('attack_zero_dam'):
                 logging.info("Zero Damage, but continuing with stupid AI")
             else:
                 logging.info("Offense: %.2f, Defense: %.2f", offense_term, defense_term)
@@ -604,19 +649,19 @@ def handle_unit_spec(all_targets, behaviour):
     invert = bool(behaviour.invert_targeting)
     # Uses ^ (which is XOR) to handle inverting the targeting
     if target_spec[0] == "Tag":
-        all_targets = [pos for pos in all_targets if bool(target_spec[1] in game.board.get_unit(pos).tags) ^ invert]
+        all_targets = [pos for pos in all_targets if any((target_spec[1] in u.tags) ^ invert for u in game.board.get_units(pos))]
     elif target_spec[0] == "Class":
-        all_targets = [pos for pos in all_targets if bool(game.board.get_unit(pos).klass == target_spec[1]) ^ invert]
+        all_targets = [pos for pos in all_targets if any((u.klass == target_spec[1]) ^ invert for u in game.board.get_units(pos))]
     elif target_spec[0] == "Name":
-        all_targets = [pos for pos in all_targets if bool(game.board.get_unit(pos).name == target_spec[1]) ^ invert]
+        all_targets = [pos for pos in all_targets if any((u.name == target_spec[1]) ^ invert for u in game.board.get_units(pos))]
     elif target_spec[0] == 'Faction':
-        all_targets = [pos for pos in all_targets if bool(game.board.get_unit(pos).faction == target_spec[1]) ^ invert]
+        all_targets = [pos for pos in all_targets if any((u.faction == target_spec[1]) ^ invert for u in game.board.get_units(pos))]
     elif target_spec[0] == 'Party':
-        all_targets = [pos for pos in all_targets if bool(game.board.get_unit(pos).party == target_spec[1]) ^ invert]
+        all_targets = [pos for pos in all_targets if any((u.party == target_spec[1]) ^ invert for u in game.board.get_units(pos))]
     elif target_spec[0] == 'ID':
-        all_targets = [pos for pos in all_targets if bool(game.board.get_unit(pos).nid == target_spec[1]) ^ invert]
+        all_targets = [pos for pos in all_targets if any((u.nid == target_spec[1]) ^ invert for u in game.board.get_units(pos))]
     elif target_spec[0] == 'Team':
-        all_targets = [pos for pos in all_targets if bool(game.board.get_unit(pos).team == target_spec[1]) ^ invert]
+        all_targets = [pos for pos in all_targets if any((u.team == target_spec[1]) ^ invert for u in game.board.get_units(pos))]
     return all_targets
 
 def get_targets(unit, behaviour):
@@ -641,8 +686,6 @@ def get_targets(unit, behaviour):
         if behaviour.target_spec == "Starting":
             if unit.starting_position:
                 all_targets = [unit.starting_position]
-            else:
-                all_targets = []
         else:
             all_targets = [tuple(behaviour.target_spec)]
     if behaviour.target in ('Unit', 'Enemy', 'Ally'):
@@ -650,7 +693,11 @@ def get_targets(unit, behaviour):
 
     if behaviour.target != 'Position':
         if DB.constants.value('ai_fog_of_war'):
-            all_targets = [pos for pos in all_targets if game.board.in_vision(pos, unit.team)]
+            all_targets = [
+                pos for pos in all_targets if 
+                game.board.in_vision(pos, unit.team) or
+                (game.board.get_unit(pos) and 'Tile' in game.board.get_unit(pos).tags) # Can always targets Tiles
+            ]
     return all_targets
 
 class SecondaryAI():
@@ -658,7 +705,7 @@ class SecondaryAI():
         self.unit = unit
         self.behaviour = behaviour
         self.view_range = self.behaviour.view_range
-        if self.view_range == -4 or self.unit.ai_group_active:
+        if self.view_range == -4 or game.ai_group_active(self.unit.ai_group):
             self.view_range = -3  # Try this first
 
         self.available_targets = []
@@ -670,13 +717,12 @@ class SecondaryAI():
         self.single_move = self.zero_move + equations.parser.movement(self.unit)
         self.double_move = self.single_move + equations.parser.movement(self.unit)
 
-        movement_group = MovementManager.get_movement_group(self.unit)
+        movement_group = movement_funcs.get_movement_group(self.unit)
         self.grid = game.board.get_grid(movement_group)
         self.pathfinder = \
             pathfinding.AStar(self.unit.position, None, self.grid,
                               game.board.bounds, game.tilemap.height,
-                              self.unit.team, skill_system.pass_through(self.unit),
-                              DB.constants.value('ai_fog_of_war'))
+                              self.unit.team)
 
         self.widen_flag = False  # Determines if we've widened our search
         self.reset()
@@ -731,7 +777,7 @@ class SecondaryAI():
             return True, self.best_position
 
         else:
-            if (self.behaviour.view_range == -4 or self.unit.ai_group_active) and not self.widen_flag:
+            if (self.behaviour.view_range == -4 or game.ai_group_active(self.unit.ai_group)) and not self.widen_flag:
                 logging.info("Widening search!")
                 self.widen_flag = True
                 self.view_range = -4
@@ -751,7 +797,11 @@ class SecondaryAI():
             adj_good_enough = True
 
         limit = self.get_limit()
-        path = self.pathfinder.process(game.board, adj_good_enough=adj_good_enough, ally_block=False, limit=limit)
+        if skill_system.pass_through(self.unit):
+            can_move_through = lambda team, adj: True
+        else:
+            can_move_through = game.board.can_move_through
+        path = self.pathfinder.process(can_move_through, adj_good_enough=adj_good_enough, limit=limit)
         self.pathfinder.reset()
         return path
 

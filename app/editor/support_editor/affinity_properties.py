@@ -58,6 +58,10 @@ class AffinityProperties(QWidget):
         total_section.addWidget(self.rank_bonus)
 
     def nid_changed(self, text):
+        # Can't change None
+        if self.current.nid == 'None': 
+            self.nid_box.edit.setText('None')
+            return
         # Also change name if they are identical
         if self.current.name == self.current.nid.replace('_', ' '):
             self.name_box.edit.setText(text.replace('_', ' '))
@@ -89,6 +93,11 @@ class AffinityProperties(QWidget):
         self.desc_box.edit.setText(current.desc)
         self.rank_bonus.set_current(current.bonus)
         self.icon_edit.set_current(current.icon_nid, current.icon_index)
+        if current.nid == 'None':
+            self.nid_box.setEnabled(False)
+        else:
+            self.nid_box.setEnabled(True)
+
 
 class SupportRankBonusDelegate(QStyledItemDelegate):
     rank_column = 0

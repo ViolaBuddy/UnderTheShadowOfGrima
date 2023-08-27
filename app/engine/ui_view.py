@@ -7,8 +7,9 @@ from app.data.database.database import DB
 from app.data.database.difficulty_modes import RNGOption
 from app.engine import (base_surf, combat_calcs, engine, equations, evaluate,
                         icons, image_mods, item_funcs, item_system,
-                        menu_options, skill_system, text_funcs)
+                        skill_system, text_funcs)
 from app.engine.fonts import FONT
+from app.engine.game_menus import menu_options
 from app.engine.game_counters import ANIMATION_COUNTERS
 from app.engine.game_state import game
 from app.engine.sprites import SPRITES
@@ -109,7 +110,7 @@ class UIView():
 
         if (game.state.current() in self.legal_states or game.state.current() in self.initiative_states) \
                 and DB.constants.value('initiative') \
-                and not game.current_level.roam and game.initiative.draw_me:
+                and not game.is_roam() and game.initiative.draw_me:
             self.initiative_info_disp = self.create_initiative_info()
             self.initiative_info_offset = max(0, self.initiative_info_offset)
         elif self.initiative_info_disp:
@@ -121,7 +122,7 @@ class UIView():
 
         # === Final drawing
         # Should be in topleft, unless cursor is in topleft, in which case it should be in bottomleft
-        if self.unit_info_disp:
+        if game.state.current() in self.legal_states and self.unit_info_disp:
             # If in top and not in right
             if not DB.constants.value('initiative') or not game.initiative.draw_me:
                 if self.remove_unit_info:
@@ -261,7 +262,7 @@ class UIView():
         return surf
 
     def create_tile_info(self, coord):
-        terrain_nid = game.tilemap.get_terrain(coord)
+        terrain_nid = game.get_terrain_nid(game.tilemap, coord)
         terrain = DB.terrain.get(terrain_nid)
         current_unit = game.board.get_unit(coord)
         if current_unit and 'Tile' in current_unit.tags:
@@ -308,7 +309,7 @@ class UIView():
             shimmer = SPRITES.get('menu_shimmer1')
         else:
             shimmer = SPRITES.get('menu_shimmer2')
-        bg_surf.blit(shimmer, (bg_surf.get_width() - 1 - shimmer.get_width(), 4))
+        bg_surf.blit(shimmer, (bg_surf.get_width() - 1 - shimmer.get_width(), 4 + 16 * max(len(text_lines) - 2, 0)))
         surf = engine.create_surface((bg_surf.get_width(), bg_surf.get_height() + 3), transparent=True)
         surf.blit(bg_surf, (0, 3))
         gem = SPRITES.get('combat_gem_blue')
@@ -331,16 +332,19 @@ class UIView():
 
     def create_attack_info(self, attacker, weapon, defender, a_assist=None, d_assist=None):
         def blit_num(surf, num, x_pos, y_pos):
-            if num is None:
-                FONT['text-blue'].blit_right('--', surf, (x_pos, y_pos))
+            if num is None or num == '--':
+                # x_pos - 1 to center -- with general center of 2 digit numbers
+                FONT['text-blue'].blit_right('--', surf, (x_pos - 1, y_pos))
                 return
             if not isinstance(num, str) and num >= 100:
-                surf.blit(SPRITES.get('blue_100'), (x_pos - 16, y_pos))
+                surf.blit(SPRITES.get('blue_100'), (x_pos - 15, y_pos))
             else:
                 FONT['text-blue'].blit_right(str(num), surf, (x_pos, y_pos))
 
-        grandmaster = game.mode.rng_choice == RNGOption.GRANDMASTER
         crit_flag = DB.constants.value('crit')
+        grandmaster = game.mode.rng_choice == RNGOption.GRANDMASTER
+        if grandmaster:  # Grandmaster takes precedence
+            crit_flag = False
 
         # Choose attack info background
         prefix = 'attack_info_'
@@ -350,15 +354,15 @@ class UIView():
             infix = 'crit'
         else:
             infix = ''
-        color = utils.get_team_color(defender.team)
-        if color not in ('red', 'purple'):
-            color = 'red'
-        final = prefix + infix + ('_' if infix else '') + color
-        surf = SPRITES.get(final).copy()
 
-        if DB.constants.value('pairup'):
-            # This is where the dual attack info will be shown
-            if (a_assist or d_assist) and not (attacker.traveler or defender.traveler):
+        color = DB.teams.get(defender.team).combat_color
+        final = prefix + infix + ('_' if infix else '') + color
+        fallback_final = prefix + infix + ('_' if infix else '') + 'red'
+        surf = SPRITES.get(final, fallback_final).copy()
+
+        if DB.constants.value('pairup') and \
+                (a_assist or d_assist) and not (attacker.traveler or defender.traveler):
+            if a_assist:
                 # Background boxes
                 prefix = 'assist_info_'
                 if grandmaster:
@@ -367,12 +371,27 @@ class UIView():
                     infix = 'crit'
                 else:
                     infix = ''
-                color = utils.get_team_color(attacker.team)
+                color = DB.teams.get(attacker.team).combat_color
                 final = prefix + infix + ('_' if infix else '') + color
-                surf.blit(SPRITES.get(final).copy(), (68, 19))
+                fallback_final = prefix + infix + ('_' if infix else '') + 'red'
+                surf.blit(SPRITES.get(final, fallback_final).copy(), (92, 35))
 
-                # Defender's dual attack
-                # Drawn here so there's always a complete box
+                mt = combat_calcs.compute_assist_damage(a_assist, defender, a_assist.get_weapon(), defender.get_weapon(), 'attack', (0, 0))
+                if grandmaster:
+                    hit = utils.clamp(combat_calcs.compute_hit(a_assist, defender, a_assist.get_weapon(), defender.get_weapon(), 'attack', (0, 0)), 0, 100)
+                    blit_num(surf, int(mt * float(hit) / 100), 112, 35)
+                else:
+                    blit_num(surf, mt, 112, 35)
+                    hit = combat_calcs.compute_hit(a_assist, defender, a_assist.get_weapon(), defender.get_weapon(), 'attack', (0, 0))
+                    blit_num(surf, hit, 112, 51)
+                    # Blit crit if applicable
+                    if crit_flag:
+                        c = combat_calcs.compute_crit(a_assist, defender, a_assist.get_weapon(), defender.get_weapon(), 'attack', (0, 0))
+                        blit_num(surf, c, 112, 67)
+
+            if d_assist and defender.get_weapon() and \
+                    combat_calcs.can_counterattack(attacker, weapon, defender, defender.get_weapon()):
+                # Background boxes
                 prefix = 'assist_info_'
                 if grandmaster:
                     infix = 'grandmaster'
@@ -380,57 +399,36 @@ class UIView():
                     infix = 'crit'
                 else:
                     infix = ''
-                color = utils.get_team_color(defender.team)
-                if color not in ('red', 'purple'):
-                    color = 'red'
+                color = DB.teams.get(defender.team).combat_color
                 final = prefix + infix + ('_' if infix else '') + color
-                surf.blit(SPRITES.get(final).copy(), (68, 34))
+                fallback_final = prefix + infix + ('_' if infix else '') + 'red'
+                surf.blit(SPRITES.get(final, fallback_final).copy(), (1, 35))
 
-            if not defender.traveler and a_assist:
-
-                width = text_width('text', a_assist.name)
-                render_text(surf, ['text'], [a_assist.name], ['white'], (90 - width//2, 19))
-                mt = combat_calcs.compute_assist_damage(a_assist, defender, a_assist.get_weapon(), defender.get_weapon(), 'attack', (0, 0))
-                if grandmaster:
-                    hit = combat_calcs.compute_hit(a_assist, defender, a_assist.get_weapon(), defender.get_weapon(), 'attack', (0, 0))
-                    blit_num(surf, int(mt * float(hit) / 100), 110, 34)
-                else:
-                    blit_num(surf, mt, 110, 34)
-                    hit = combat_calcs.compute_hit(a_assist, defender, a_assist.get_weapon(), defender.get_weapon(), 'attack', (0, 0))
-                    blit_num(surf, hit, 110, 50)
-                    # Blit crit if applicable
-                    if crit_flag:
-                        c = combat_calcs.compute_crit(a_assist, defender, a_assist.get_weapon(), defender.get_weapon(), 'attack', (0, 0))
-                        blit_num(surf, c, 110, 66)
-
-            if not attacker.traveler and d_assist and defender.get_weapon() and \
-                    combat_calcs.can_counterattack(attacker, weapon, defender, defender.get_weapon()):
-
-                width = text_width('text', d_assist.name)
-                render_text(surf, ['text'], [d_assist.name], ['white'], (90 - width//2, 81))
                 mt = combat_calcs.compute_assist_damage(d_assist, attacker, d_assist.get_weapon(), weapon, 'defense', (0, 0))
                 if grandmaster:
-                    hit = combat_calcs.compute_hit(d_assist, attacker, d_assist.get_weapon(), weapon, 'defense', (0, 0))
-                    blit_num(surf, int(mt * float(hit) / 100), 87, 34)
+                    hit = utils.clamp(combat_calcs.compute_hit(d_assist, attacker, d_assist.get_weapon(), weapon, 'defense', (0, 0)), 0, 100)
+                    blit_num(surf, int(mt * float(hit) / 100), 21, 35)
                 else:
-                    blit_num(surf, mt, 87, 34)
+                    blit_num(surf, mt, 21, 35)
                     hit = combat_calcs.compute_hit(d_assist, attacker, d_assist.get_weapon(), weapon, 'defense', (0, 0))
-                    blit_num(surf, hit, 87, 50)
+                    blit_num(surf, hit, 21, 51)
                     # Blit crit if applicable
                     if crit_flag:
                         c = combat_calcs.compute_crit(d_assist, attacker, d_assist.get_weapon(), weapon, 'defense', (0, 0))
-                        blit_num(surf, c, 87, 66)
+                        blit_num(surf, c, 21, 67)
+        # Now make everything translucent
+        surf = image_mods.make_translucent(surf, .1)
 
         # Name
         width = text_width('text', attacker.name)
-        render_text(surf, ['text'], [attacker.name], ['white'], (43 - width//2, 3))
+        render_text(surf, ['text'], [attacker.name], ['white'], (67 - width//2, 3))
         # Enemy name
         y_pos = 84
         if not crit_flag:
             y_pos -= 16
         if grandmaster:
             y_pos -= 16
-        position = 26 - text_width('text', defender.name)//2, y_pos
+        position = 50 - text_width('text', defender.name)//2, y_pos
         render_text(surf, ['text'], [defender.name], ['white'], position)
         # Enemy Weapon
         if defender.get_weapon():
@@ -440,25 +438,25 @@ class UIView():
                 y_pos -= 16
             if grandmaster:
                 y_pos -= 16
-            position = 32 - width//2, y_pos
+            position = 56 - width//2, y_pos
             render_text(surf, ['text'], [defender.get_weapon().name], ['white'], position)
         # Self HP
-        blit_num(surf, attacker.get_hp(), 64, 19)
+        blit_num(surf, attacker.get_hp(), 88, 19)
         # Enemy HP
-        blit_num(surf, defender.get_hp(), 20, 19)
+        blit_num(surf, defender.get_hp(), 44, 19)
         # Self MT
         mt = combat_calcs.compute_damage(attacker, defender, weapon, defender.get_weapon(), 'attack', (0, 0))
         if grandmaster:
-            hit = combat_calcs.compute_hit(attacker, defender, weapon, defender.get_weapon(), 'attack', (0, 0))
-            blit_num(surf, int(mt * float(hit) / 100), 64, 35)
+            hit = utils.clamp(combat_calcs.compute_hit(attacker, defender, weapon, defender.get_weapon(), 'attack', (0, 0)), 0, 100)
+            blit_num(surf, int(mt * float(hit) / 100), 88, 35)
         else:
-            blit_num(surf, mt, 64, 35)
+            blit_num(surf, mt, 88, 35)
             hit = combat_calcs.compute_hit(attacker, defender, weapon, defender.get_weapon(), 'attack', (0, 0))
-            blit_num(surf, hit, 64, 51)
+            blit_num(surf, hit, 88, 51)
             # Blit crit if applicable
             if crit_flag:
                 c = combat_calcs.compute_crit(attacker, defender, weapon, defender.get_weapon(), 'attack', (0, 0))
-                blit_num(surf, c, 64, 67)
+                blit_num(surf, c, 88, 67)
         # Enemy Hit and Mt
         if defender.get_weapon() and \
                 combat_calcs.can_counterattack(attacker, weapon, defender, defender.get_weapon()):
@@ -475,14 +473,14 @@ class UIView():
 
         if grandmaster:
             if e_mt == '--' or e_hit == '--':
-                blit_num(surf, e_mt, 20, 35)
+                blit_num(surf, e_mt, 44, 35)
             else:
-                blit_num(surf, int(e_mt * float(e_hit) / 100), 20, 35)
+                blit_num(surf, int(e_mt * float(e_hit) / 100), 44, 35)
         else:
-            blit_num(surf, e_mt, 20, 35)
-            blit_num(surf, e_hit, 20, 51)
+            blit_num(surf, e_mt, 44, 35)
+            blit_num(surf, e_hit, 44, 51)
             if crit_flag:
-                blit_num(surf, e_crit, 20, 67)
+                blit_num(surf, e_crit, 44, 67)
 
         return surf
 
@@ -507,19 +505,34 @@ class UIView():
         skill_system.test_on([], attacker, weapon, defender, 'attack')
         skill_system.test_on([], defender, defender.get_weapon(), attacker, 'defense')
 
+        def has_attacker_strike_partner() -> bool:
+            return DB.constants.value('pairup') and \
+                a_assist and not (attacker.traveler or defender.traveler)
+
+        def has_defender_strike_partner() -> bool:
+            return DB.constants.value('pairup') and \
+                d_assist and not (attacker.traveler or defender.traveler) and \
+                defender.get_weapon() and \
+                combat_calcs.can_counterattack(attacker, weapon, defender, defender.get_weapon())
+
         if not self.attack_info_disp:
             self.attack_info_disp = self.create_attack_info(attacker, weapon, defender, a_assist, d_assist)
 
+        crit_flag = DB.constants.value('crit')
         grandmaster = game.mode.rng_choice == RNGOption.GRANDMASTER
-        crit = DB.constants.get('crit').value
+        if grandmaster:  # Grandmaster takes precedence
+            crit_flag = False
 
         if game.cursor.position[0] > TILEX // 2 + game.camera.get_x() - 1:
-            topleft = (8 - self.attack_info_offset, 4)
+            if has_defender_strike_partner():
+                topleft = (5 - self.attack_info_offset, 4)
+            else:
+                topleft = (-19 - self.attack_info_offset, 4)
         else:
-            if DB.constants.value('pairup'):
+            if has_attacker_strike_partner():
                 topleft = (WINWIDTH - 122 + self.attack_info_offset, 4)
             else:
-                topleft = (WINWIDTH - 77 + self.attack_info_offset, 4)
+                topleft = (WINWIDTH - 97 + self.attack_info_offset, 4)
         if self.attack_info_offset > 0:
             self.attack_info_offset -= 20
 
@@ -529,7 +542,7 @@ class UIView():
         icon = icons.get_icon(weapon)
         if icon:
             icon = item_system.item_icon_mod(attacker, weapon, defender, icon)
-            surf.blit(icon, (topleft[0] + 2, topleft[1] + 4))
+            surf.blit(icon, (topleft[0] + 26, topleft[1] + 4))
 
         # Defender Item
         if defender.get_weapon():
@@ -538,39 +551,44 @@ class UIView():
             if icon:
                 icon = item_system.item_icon_mod(defender, eweapon, attacker, icon)
                 y_pos = topleft[1] + 83
-                if not crit:
+                if not crit_flag:
                     y_pos -= 16
                 if grandmaster:
                     y_pos -= 16
-                surf.blit(icon, (topleft[0] + 50, y_pos))
+                surf.blit(icon, (topleft[0] + 74, y_pos))
 
         # Advantage arrows
         if skill_system.check_enemy(attacker, defender):
-            self.draw_adv_arrows(surf, attacker, defender, weapon, defender.get_weapon(), (topleft[0] + 13, topleft[1] + 8))
+            self.draw_adv_arrows(surf, attacker, defender, weapon, defender.get_weapon(), (topleft[0] + 37, topleft[1] + 8))
 
-            y_pos = topleft[1] + 105
-            if not crit:
+            y_pos = topleft[1] + 89
+            if not crit_flag:
                 y_pos -= 16
-            if not grandmaster:
+            if grandmaster:
                 y_pos -= 16
 
-            self.draw_adv_arrows(surf, defender, attacker, defender.get_weapon(), weapon, (topleft[0] + 61, y_pos))
+            self.draw_adv_arrows(surf, defender, attacker, defender.get_weapon(), weapon, (topleft[0] + 85, y_pos))
 
         # Doubling
         count = ANIMATION_COUNTERS.x2_counter.count
-        x2_pos_player = (topleft[0] + 59 + self.x_positions[count], topleft[1] + 38 + self.y_positions[count])
-        x2_pos_enemy = (topleft[0] + 20 + self.x_positions[count], topleft[1] + 38 + self.y_positions[count])
+        x2_pos_player = (topleft[0] + 83 + self.x_positions[count], topleft[1] + 38 + self.y_positions[count])
+        x2_pos_enemy = (topleft[0] + 44 + self.x_positions[count], topleft[1] + 38 + self.y_positions[count])
+        x2_pos_player_partner = (topleft[0] + 107 + self.x_positions[count], topleft[1] + 38 + self.y_positions[count])
+        x2_pos_enemy_partner = (topleft[0] + 20 + self.x_positions[count], topleft[1] + 38 + self.y_positions[count])
 
         my_num = combat_calcs.outspeed(attacker, defender, weapon, defender.get_weapon(), "attack", (0, 0))
         my_num *= combat_calcs.compute_multiattacks(attacker, defender, weapon, "attack", (0, 0))
-        my_num = min(my_num, weapon.data.get('uses', 100))
+        if weapon.uses_options and weapon.uses_options.one_loss_per_combat():
+            pass  # If you can only lose one use at a time, no need to min this
+        else:
+            my_num = min(my_num, weapon.data.get('uses', 100), weapon.data.get('c_uses', 100))
 
-        if my_num == 2:
-            surf.blit(SPRITES.get('x2'), x2_pos_player)
-        elif my_num == 3:
-            surf.blit(SPRITES.get('x3'), x2_pos_player)
-        elif my_num == 4:
-            surf.blit(SPRITES.get('x4'), x2_pos_player)
+        if my_num != 1:
+            surf.blit(SPRITES.get("x%d" % (my_num)), x2_pos_player)
+
+        if a_assist:
+            if my_num != 1 and not DB.constants.value('limit_attack_stance'):
+                surf.blit(SPRITES.get("x%d" % (my_num)), x2_pos_player_partner)
 
         # Enemy doubling
         eweapon = defender.get_weapon()
@@ -582,12 +600,12 @@ class UIView():
             e_num *= combat_calcs.compute_multiattacks(defender, attacker, eweapon, 'defense', (0, 0))
             e_num = min(e_num, eweapon.data.get('uses', 100))
 
-            if e_num == 2:
-                surf.blit(SPRITES.get('x2'), x2_pos_enemy)
-            elif e_num == 3:
-                surf.blit(SPRITES.get('x3'), x2_pos_enemy)
-            elif e_num == 4:
-                surf.blit(SPRITES.get('x4'), x2_pos_enemy)
+            if e_num != 1:
+                surf.blit(SPRITES.get("x%d" % (e_num)), x2_pos_enemy)
+
+            if d_assist:
+                if e_num != 1 and not DB.constants.value('limit_attack_stance'):
+                    surf.blit(SPRITES.get("x%d" % (e_num)), x2_pos_enemy_partner)
 
         # Turns off combat conditionals
         skill_system.test_off([], defender, defender.get_weapon(), attacker, 'defense')
@@ -603,6 +621,9 @@ class UIView():
                 height += 1
             hit = combat_calcs.compute_hit(attacker, defender, spell, defender.get_weapon(), 'attack', (0, 0))
             if hit is not None:
+                height += 1
+            crit = combat_calcs.compute_crit(attacker, defender, spell, defender.get_weapon(), 'attack', (0, 0))
+            if DB.constants.value('crit') and crit is not None:
                 height += 1
 
             bg_surf = SPRITES.get('spell_window' + str(height))
@@ -643,7 +664,6 @@ class UIView():
                     position = width - 5 - hit_width, running_height
                     FONT['text-blue'].blit(str(hit), bg_surf, position)
 
-            crit = combat_calcs.compute_crit(attacker, defender, spell, defender.get_weapon(), 'attack', (0, 0))
             if DB.constants.value('crit') and crit is not None:
                 running_height += 16
                 FONT['text-yellow'].blit('Crit', bg_surf, (9, running_height))
@@ -666,7 +686,7 @@ class UIView():
             mt = combat_calcs.damage(attacker, spell)
             if mt is not None:
                 height += 16
-            real_surf = base_surf.create_base_surf((80, height), 'menu_bg_base_opaque')
+            real_surf = base_surf.create_base_surf((80, height), 'menu_bg_base')
             bg_surf = engine.create_surface((real_surf.get_width() + 2, real_surf.get_height() + 4), transparent=True)
             bg_surf.blit(real_surf, (2, 4))
             bg_surf.blit(SPRITES.get('menu_gem_small'), (0, 0))
@@ -789,7 +809,7 @@ class ItemDescriptionPanel():
 
     def create_surf(self):
         width, height = 96, 56
-        sub_bg_surf = base_surf.create_base_surf(width, height, 'menu_bg_base_opaque')
+        sub_bg_surf = base_surf.create_base_surf(width, height, 'menu_bg_base')
         bg_surf = engine.create_surface((width + 2, height + 4), transparent=True)
         bg_surf.blit(sub_bg_surf, (2, 4))
         bg_surf.blit(SPRITES.get('menu_gem_small'), (0, 0))
@@ -836,8 +856,10 @@ class ItemDescriptionPanel():
         else:
             if self.item.desc:
                 desc = self.item.desc
-            else:
+            elif not available:
                 desc = "Cannot wield."
+            else:
+                desc = ""
 
             desc = desc.replace('{br}', '\n')
             lines = text_funcs.line_wrap('text', desc, width - 8)

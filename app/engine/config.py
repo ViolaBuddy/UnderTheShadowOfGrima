@@ -4,7 +4,6 @@ from collections import OrderedDict
 from app.utilities import str_utils
 
 def read_config_file():
-    from app.engine import engine
     lines = OrderedDict([('debug', 0),
                          ('random_seed', -1),
                          ('screen_size', 2),
@@ -24,7 +23,7 @@ def read_config_file():
                          ('sound_volume', 0.3),
                          ('talk_boop', 1),
                          ('show_bounds', 0),
-                         ('grid_opacity', 127),
+                         ('grid_opacity', 0),
                          ('autoend_turn', 1),
                          ('confirm_end', 1),
                          ('hp_map_team', 'All'),
@@ -65,7 +64,8 @@ def read_config_file():
             if str_utils.is_int(v):
                 lines[k] = int(v)
             elif v.startswith('K_'):  # pygame key constant
-                lines[k] = getattr(engine.pygame, v)
+                import pygame
+                lines[k] = getattr(pygame, v)
         else:  # convert to int
             lines[k] = int(v)
 

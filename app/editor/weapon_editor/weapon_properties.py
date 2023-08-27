@@ -32,28 +32,28 @@ class WeaponProperties(QWidget):
 
         name_section = QVBoxLayout()
 
-        self.nid_box = PropertyBox("Unique ID", NidLineEdit, self)
+        self.nid_box = PropertyBox(_("Unique ID"), NidLineEdit, self)
         self.nid_box.edit.textChanged.connect(self.nid_changed)
         self.nid_box.edit.editingFinished.connect(self.nid_done_editing)
         name_section.addWidget(self.nid_box)
 
-        self.name_box = PropertyBox("Display Name", QLineEdit, self)
+        self.name_box = PropertyBox(_("Display Name"), QLineEdit, self)
 
         self.name_box.edit.textChanged.connect(self.name_changed)
         name_section.addWidget(self.name_box)
 
         top_section.addLayout(name_section)
 
-        self.force_melee_anim_box = PropertyCheckBox("Force Melee Anim", QCheckBox, self)
+        self.force_melee_anim_box = PropertyCheckBox(_("Force Melee Anim"), QCheckBox, self)
         self.force_melee_anim_box.edit.stateChanged.connect(self.force_melee_anim_changed)
-        self.force_melee_anim_box.setToolTip("Force this weapontype to use the melee animation at melee range, even with a ranged weapon. Ex. Javelins in GBA")
+        self.force_melee_anim_box.setToolTip(_("Force this weapontype to use the melee animation at melee range, even with a ranged weapon. Ex. Javelins in GBA"))
         name_section.addWidget(self.force_melee_anim_box)
 
         attrs = ('weapon_rank', 'damage', 'resist', 'accuracy', 'avoid', 'crit', 'dodge', 'attack_speed', 'defense_speed')
-        self.rank_bonus = AppendMultiListWidget(CombatBonusList(), "Rank Bonus", attrs, RankBonusDelegate, self)
+        self.rank_bonus = AppendMultiListWidget(CombatBonusList(), _("Rank Bonus"), attrs, RankBonusDelegate, self)
         attrs = ('weapon_type', 'weapon_rank', 'damage', 'resist', 'accuracy', 'avoid', 'crit', 'dodge', 'attack_speed', 'defense_speed')
-        self.advantage = AppendMultiListWidget(CombatBonusList(), "Advantage versus", attrs, CombatBonusDelegate, self)
-        self.disadvantage = AppendMultiListWidget(CombatBonusList(), "Disadvantage versus", attrs, CombatBonusDelegate, self)
+        self.advantage = AppendMultiListWidget(CombatBonusList(), _("Advantage versus"), attrs, CombatBonusDelegate, self)
+        self.disadvantage = AppendMultiListWidget(CombatBonusList(), _("Disadvantage versus"), attrs, CombatBonusDelegate, self)
 
         total_section = QVBoxLayout()
         self.setLayout(total_section)

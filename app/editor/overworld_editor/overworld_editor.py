@@ -1,10 +1,11 @@
 import math
 from collections import namedtuple
 from enum import Enum
-from typing import Tuple
+from typing import Optional, Tuple
 
 from PyQt5 import QtWidgets
 from PyQt5 import QtCore
+from app import dark_theme
 
 from app.data.database.database import DB
 # Data
@@ -14,12 +15,10 @@ from app.data.database.overworld_node import OverworldNodePrefab
 from app.editor.lib.components.dock import Dock
 # utils
 from app.editor.lib.math.math_utils import distance_from_line
-from app.editor.lib.state_editor.editor_state_manager import EditorStateManager
 from app.editor.lib.state_editor.state_enums import MainEditorScreenStates
 # Application State
 from app.editor.settings import MainSettingsController
 from app.editor.world_map_view import WorldMapView
-from app.data.resources.resources import RESOURCES
 from app.utilities import str_utils, utils
 from app.utilities.typing import Point
 from PyQt5.QtCore import Qt
@@ -67,6 +66,10 @@ class OverworldEditor(QMainWindow):
     @property
     def selected_object(self):
         return self._selected_object
+
+    def road_building_mode(self):
+        modifiers = QtWidgets.QApplication.keyboardModifiers()
+        return bool(modifiers == QtCore.Qt.ControlModifier)
 
     @selected_object.setter
     def selected_object(self, sel: SelectedObject):
@@ -120,12 +123,19 @@ class OverworldEditor(QMainWindow):
         self.current_overworld = DB.overworlds.get(overworld_nid)
 
     def on_map_double_left_click(self, x, y):
-        if(self.edit_mode == OverworldEditorEditMode.NODES):
+        if self.edit_mode == OverworldEditorEditMode.NODES:
             self.create_node(x, y)
 
     def on_map_right_click(self, x, y):
-        if(self.edit_mode == OverworldEditorEditMode.NODES):
-            self.edit_road(x, y)
+        if self.edit_mode == OverworldEditorEditMode.NODES:
+            if self.road_building_mode():
+                self.edit_road(x, y)
+            elif self.selected_object.type == OverworldEditorInternalTypes.MAP_NODE:
+                self.selected_object.obj.pos = (x, y)
+                for n in self.current_overworld.overworld_nodes: 
+                    if n.nid == self.selected_object.obj.nid: 
+                        n.pos = (x, y)
+                self.select_object_on_map(x, y)              
 
     def on_map_left_click(self, x, y):
         """Left click handler. NB: this uses float granularity (see where it's bound in this class)
@@ -134,7 +144,7 @@ class OverworldEditor(QMainWindow):
             x (float): float-granular x-coordinate of click
             y (float): float-granular y-coordinate of click
         """
-        if(self.edit_mode == OverworldEditorEditMode.NODES):
+        if self.edit_mode == OverworldEditorEditMode.NODES:
             self.select_object_on_map(x, y)
 
     def on_map_hover(self, x, y):
@@ -433,12 +443,9 @@ class OverworldEditor(QMainWindow):
         self.back_to_main_act = QAction(
             "Back", self, shortcut="E", triggered=self.navigate_to_global)
 
-    def set_icons(self):
-        theme = self.settings.get_theme(0)
-        if theme == 0:
-            icon_folder = 'icons/icons'
-        else:
-            icon_folder = 'icons/dark_icons'
+    def set_icons(self, force_theme: Optional[dark_theme.ThemeType] = None):
+        theme = dark_theme.get_theme(force_theme)
+        icon_folder = theme.icon_dir()
         self.zoom_in_act.setIcon(QIcon(f'{icon_folder}/zoom_in.png'))
         self.zoom_out_act.setIcon(QIcon(f'{icon_folder}/zoom_out.png'))
         self.back_to_main_act.setIcon(QIcon(f'{icon_folder}/left_arrow.png'))

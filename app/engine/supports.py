@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Dict
 
 from app.data.database.database import DB
 
@@ -8,6 +9,8 @@ from app.engine import action, target_system
 from app.engine.game_state import game
 
 import logging
+
+from app.utilities.typing import NID
 
 class SupportPair():
     """
@@ -103,7 +106,7 @@ class SupportEffect():
 
 class SupportController():
     def __init__(self):
-        self.support_pairs = {}
+        self.support_pairs: Dict[NID, SupportPair] = {}
 
     def get(self, unit1_nid: str, unit2_nid: str) -> SupportPair:
         nid = "%s | %s" % (unit1_nid, unit2_nid)
@@ -221,6 +224,15 @@ class SupportController():
         aff2_nid = unit2.affinity
         aff1 = DB.affinities.get(aff1_nid)
         aff2 = DB.affinities.get(aff2_nid)
+
+        # Check affinities exist before proceeding
+        if not aff1:
+            logging.error("%s is not a valid affinity", aff1_nid)
+            return SupportEffect()
+        if not aff2:
+            logging.error("%s is not a valid affinity", aff2_nid)
+            return SupportEffect()
+
         aff1_bonus = None
         aff2_bonus = None
         for support_rank_bonus in aff1.bonus:
@@ -325,6 +337,8 @@ def increment_end_combat_supports(combatant, target=None) -> list:
     """
     if not game.game_vars.get('_supports'):
         return []
+    if not combatant.position:
+        return []
     inc = DB.support_constants.value('combat_points')
     pairs = []
     if inc:
@@ -339,6 +353,7 @@ def increment_end_combat_supports(combatant, target=None) -> list:
                 other_unit = game.get_unit(support_prefab.unit1)
             if not other_unit:
                 continue
+            assert other_unit.position is not None
             if dist == 0 and target:
                 if target.position in target_system.get_attacks(other_unit, force=True):
                     action.do(action.IncrementSupportPoints(support_prefab.nid, inc))

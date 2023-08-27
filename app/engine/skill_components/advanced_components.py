@@ -1,11 +1,12 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
+
 from app.data.database.components import ComponentType
 from app.data.database.skill_components import SkillComponent, SkillTags
-from app.engine import (action, equations, item_funcs, skill_system,
-                        static_random)
+from app.engine import action, equations, item_funcs, skill_system
 from app.engine.game_state import game
 import app.engine.combat.playback as pb
+from app.utilities import static_random
 
 if TYPE_CHECKING:
     from app.engine.objects.item import ItemObject
@@ -28,9 +29,10 @@ class Ability(SkillComponent):
             game.register_item(new_item)
             return new_item
 
-    def end_combat(self, playback, unit, item, target, mode):
+    def end_combat_unconditional(self, playback, unit, item, target, mode):
         if item and item.nid == self.value:
             action.do(action.TriggerCharge(unit, self.skill))
+
 
 class CombatArt(SkillComponent):
     nid = 'combat_art'
@@ -65,10 +67,11 @@ class CombatArt(SkillComponent):
             action.do(action.RemoveSkill(unit, self._action.skill_obj))
         self._action = None
 
-    def end_combat(self, playback, unit, item, target, mode):
+    def end_combat_unconditional(self, playback, unit, item, target, mode):
         if self.skill.data.get('active'):
             action.do(action.TriggerCharge(unit, self.skill))
         self.skill.data['active'] = False
+
 
 class AutomaticCombatArt(SkillComponent):
     nid = 'automatic_combat_art'
@@ -100,27 +103,6 @@ class AllowedWeapons(SkillComponent):
             print("Couldn't evaluate conditional {%s} %s" % (self.value, e))
         return False
 
-class CombatArtSetMaxRange(SkillComponent):
-    nid = 'combat_art_set_max_range'
-    desc = "Defines what unit's max range is for testing combat art. Combine with 'Limit Max Range' component on subskill."
-    tag = SkillTags.ADVANCED
-    paired_with = ('combat_art', )
-
-    expose = ComponentType.Int
-
-    def combat_art_set_max_range(self, unit) -> int:
-        return max(0, self.value)
-
-class CombatArtModifyMaxRange(SkillComponent):
-    nid = 'combat_art_modify_max_range'
-    desc = "Modifies unit's max range when testing combat art. Combine with 'Modify Max Range' component on subskill."
-    tag = SkillTags.ADVANCED
-    paired_with = ('combat_art', )
-
-    expose = ComponentType.Int
-
-    def combat_art_modify_max_range(self, unit) -> int:
-        return self.value
 
 def get_proc_rate(unit, skill) -> int:
     for component in skill.components:
@@ -128,11 +110,13 @@ def get_proc_rate(unit, skill) -> int:
             return component.proc_rate(unit)
     return 100  # 100 is default
 
+
 def get_weapon_filter(skill, unit, item) -> bool:
     for component in skill.components:
         if component.defines('weapon_filter'):
             return component.weapon_filter(unit, item)
     return True
+
 
 class ProcGainSkillForTurn(SkillComponent):
     nid = 'proc_turn_skill'
@@ -153,6 +137,7 @@ class ProcGainSkillForTurn(SkillComponent):
         if self._did_action:
             actions.append(action.RemoveSkill(unit, self.value))
 
+
 class AttackProc(SkillComponent):
     nid = 'attack_proc'
     desc = "Allows skill to proc on a single attacking strike"
@@ -169,12 +154,16 @@ class AttackProc(SkillComponent):
             if static_random.get_combat() < proc_rate:
                 act = action.AddSkill(unit, self.value)
                 action.do(act)
-                playback.append(pb.AttackProc(unit, act.skill_obj))
+                if act.skill_obj:
+                    playback.append(pb.AttackProc(unit, act.skill_obj))
                 self._did_action = True
 
     def end_sub_combat(self, actions, playback, unit, item, target, mode, attack_info):
         if self._did_action:
+            action.do(action.TriggerCharge(unit, self.skill))
             action.do(action.RemoveSkill(unit, self.value))
+        self._did_action = False
+
 
 class DefenseProc(SkillComponent):
     nid = 'defense_proc'
@@ -192,12 +181,16 @@ class DefenseProc(SkillComponent):
             if static_random.get_combat() < proc_rate:
                 act = action.AddSkill(unit, self.value)
                 action.do(act)
-                playback.append(pb.DefenseProc(unit, act.skill_obj))
+                if act.skill_obj:
+                    playback.append(pb.DefenseProc(unit, act.skill_obj))
                 self._did_action = True
 
     def end_sub_combat(self, actions, playback, unit, item, target, mode, attack_info):
         if self._did_action:
+            action.do(action.TriggerCharge(unit, self.skill))
             action.do(action.RemoveSkill(unit, self.value))
+        self._did_action = False
+
 
 class AttackPreProc(SkillComponent):
     nid = 'attack_pre_proc'
@@ -215,13 +208,16 @@ class AttackPreProc(SkillComponent):
             if static_random.get_combat() < proc_rate:
                 act = action.AddSkill(unit, self.value)
                 action.do(act)
-                playback.append(pb.AttackPreProc(unit, act.skill_obj))
+                if act.skill_obj:
+                    playback.append(pb.AttackPreProc(unit, act.skill_obj))
                 self._did_action = True
 
-    def end_combat(self, playback, unit, item, target, mode):
+    def end_combat_unconditional(self, playback, unit, item, target, mode):
         if self._did_action:
+            action.do(action.TriggerCharge(unit, self.skill))
             action.do(action.RemoveSkill(unit, self.value))
             self._did_action = False
+
 
 class DefensePreProc(SkillComponent):
     nid = 'defense_pre_proc'
@@ -239,13 +235,16 @@ class DefensePreProc(SkillComponent):
             if static_random.get_combat() < proc_rate:
                 act = action.AddSkill(unit, self.value)
                 action.do(act)
-                playback.append(pb.DefensePreProc(unit, act.skill_obj))
+                if act.skill_obj:
+                    playback.append(pb.DefensePreProc(unit, act.skill_obj))
                 self._did_action = True
 
-    def end_combat(self, playback, unit, item, target, mode):
+    def end_combat_unconditional(self, playback, unit, item, target, mode):
         if self._did_action:
+            action.do(action.TriggerCharge(unit, self.skill))
             action.do(action.RemoveSkill(unit, self.value))
             self._did_action = False
+
 
 class ProcRate(SkillComponent):
     nid = 'proc_rate'
@@ -257,16 +256,6 @@ class ProcRate(SkillComponent):
     def proc_rate(self, unit):
         return equations.parser.get(self.value, unit)
 
-class DeathTether(SkillComponent):
-    nid = 'death_tether'
-    desc = "Remove all skills in the game that I initiated on my death"
-    tag = SkillTags.ADVANCED
-
-    def on_death(self, unit):
-        for other_unit in game.units:
-            for skill in other_unit.skills:
-                if skill.initiator_nid == unit.nid:
-                    action.do(action.RemoveSkill(other_unit, skill))
 
 class ItemOverride(SkillComponent):
     nid = 'item_override'

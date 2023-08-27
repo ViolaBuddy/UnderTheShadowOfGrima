@@ -1,3 +1,4 @@
+from typing import Type
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QPushButton
 from PyQt5.QtGui import QPixmap, QIcon
 from PyQt5.QtCore import Qt, pyqtSignal
@@ -46,7 +47,6 @@ class PushableIcon16(QPushButton):
         self._nid = nid
         self.x = icon_index[0]
         self.y = icon_index[1]
-        self.sourceChanged.emit(self._nid, self.x, self.y)
         self.render()
 
     def onIconSourcePicker(self):
@@ -54,6 +54,7 @@ class PushableIcon16(QPushButton):
         res, ok = icon_tab.get(self.width, self._nid)
         if res and ok:
             self.change_icon(res.nid, res.icon_index)
+            self.sourceChanged.emit(self._nid, self.x, self.y)
 
 class PushableIcon32(PushableIcon16):
     width, height = 32, 32
@@ -197,5 +198,5 @@ class MapIconButton(QPushButton):
     def onIconSourcePicker(self):
         from app.editor.icon_editor import icon_tab
         res, ok = icon_tab.get_map_icon_editor()
-        if ok:
+        if res and ok:
             self.change_icon(res.nid)

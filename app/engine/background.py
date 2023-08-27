@@ -29,12 +29,16 @@ class SpriteBackground():
             self.fade += 4
             bg_surf = image_mods.make_translucent(self.image, self.fade/100.)
             if self.fade >= 100:
+                self.fade = 100
                 return True
         else:
             bg_surf = self.image
 
         engine.blit_center(surf, bg_surf)
         return False
+
+    def fade_in(self):
+        self.state = 'in'
 
     def fade_out(self):
         self.state = 'out'
@@ -287,16 +291,19 @@ class Foreground():
                     self.foreground = None
                     self.fade_out = False
 
-def create_background(bg_name):
+def create_background(bg_name, scroll=True):
     panorama = RESOURCES.panoramas.get(bg_name)
     if not panorama:
         panorama = RESOURCES.panoramas.get('default_background')
     if panorama:
-        if panorama.num_frames > 1:
-            return PanoramaBackground(panorama)
+        if scroll:
+            if panorama.num_frames > 1:
+                return PanoramaBackground(panorama)
+            else:
+                bg = ScrollingBackground(panorama)
+                bg.scroll_speed = 50  # Make it move slower
+                return bg
         else:
-            bg = ScrollingBackground(panorama)
-            bg.scroll_speed = 50  # Make it move slower
-            return bg
+            return PanoramaBackground(panorama)
     else:
         return None

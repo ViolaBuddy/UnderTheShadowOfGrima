@@ -86,20 +86,30 @@ def compute_advantage(unit1, unit2, item1, item2, advantage=True):
         bonus = DB.weapons.get(item1_weapontype).advantage
     else:
         bonus = DB.weapons.get(item1_weapontype).disadvantage
-    for adv in bonus:
+    # bonus is a CombatBonusList
+    highest_requirement_met = -1
+    new_adv = None
+    for adv in bonus:  
         if adv.weapon_type == 'All' or adv.weapon_type == item2_weapontype:
-            if adv.weapon_rank == 'All' or DB.weapon_ranks.get(adv.weapon_rank).requirement >= unit1.wexp[item1_weapontype]:
+            if adv.weapon_rank == 'All':
                 new_adv = weapons.CombatBonus.copy(adv)
                 new_adv.modify(final_w_mod)
                 return new_adv
-    return None
+            # Figure out which Weapon Rank Bonus is highest that we meet
+            requirement = DB.weapon_ranks.get(adv.weapon_rank).requirement
+            if unit1.wexp[item1_weapontype] >= requirement and requirement > highest_requirement_met:
+                highest_requirement_met = requirement
+                new_adv = weapons.CombatBonus.copy(adv)
+                new_adv.modify(final_w_mod)
+    return new_adv
 
 def can_counterattack(attacker, aweapon, defender, dweapon) -> bool:
+    from app.engine import target_system
     if dweapon and item_funcs.available(defender, dweapon):
         if item_system.can_be_countered(attacker, aweapon) and \
                 item_system.can_counter(defender, dweapon):
             if not attacker.position or \
-                    attacker.position in item_system.valid_targets(defender, dweapon) or \
+                    attacker.position in target_system.targets_in_range(defender, dweapon) or \
                     skill_system.distant_counter(defender) or \
                     (skill_system.close_counter(defender) and utils.calculate_distance(attacker.position, defender.position) == 1):
                 return True
@@ -282,6 +292,9 @@ def attack_speed(unit, item=None):
     # TODO
     # Support bonus
 
+    if not DB.constants.value('allow_negative_as') and attack_speed < 0:
+        attack_speed = 0
+
     return attack_speed
 
 def defense_speed(unit, item, item_to_avoid=None):
@@ -301,6 +314,10 @@ def defense_speed(unit, item, item_to_avoid=None):
     if item:
         speed += item_system.modify_defense_speed(unit, item)
     speed += skill_system.modify_defense_speed(unit, item_to_avoid)
+
+    if not DB.constants.value('allow_negative_as') and speed < 0:
+        speed = 0
+        
     return speed
 
 def compute_hit(unit, target, item, def_item, mode, attack_info):
@@ -398,6 +415,7 @@ def compute_crit(unit, target, item, def_item, mode, attack_info):
     crit -= skill_system.dynamic_crit_avoid(target, item, unit, mode, attack_info, crit)
 
     crit *= skill_system.crit_multiplier(unit, item, target, mode, attack_info, crit)
+    crit = int(crit)
 
     return utils.clamp(crit, 0, 100)
 

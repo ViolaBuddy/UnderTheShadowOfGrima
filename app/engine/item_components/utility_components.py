@@ -61,14 +61,18 @@ class Heal(ItemComponent):
             return help_term * heal_term
         return 0
 
-class MagicHeal(Heal, ItemComponent):
-    nid = 'magic_heal'
-    desc = "Heals the target for the specified integer + the HEAL equation defined in the equations editor. Will act oddly if no HEAL equation is defined."
+class EquationHeal(Heal):
+    nid = 'equation_heal'
+    desc = "Heals the target for the value of the equation defined in the equations editor. Equation is calculated using the caster's stats, not the targets"
+
+    expose = ComponentType.Equation
+    value = 'HEAL'
 
     def _get_heal_amount(self, unit, target):
         empower_heal = skill_system.empower_heal(unit, target)
         empower_heal_received = skill_system.empower_heal_received(target, unit)
-        return self.value + equations.parser.heal(unit) + empower_heal + empower_heal_received
+        equation = self.value
+        return equations.parser.get(equation, unit) + empower_heal + empower_heal_received
 
 class Refresh(ItemComponent):
     nid = 'refresh'
@@ -114,7 +118,7 @@ class Restore(ItemComponent):
                 actions.append(action.RemoveSkill(target, skill))
                 playback.append(pb.RestoreHit(unit, item, target))
 
-class RestoreSpecific(Restore, ItemComponent):
+class RestoreSpecific(Restore):
     nid = 'restore_specific'
     desc = "Item removes specific status from target on hit"
     tag = ItemTags.UTILITY
@@ -134,17 +138,13 @@ class UnlockStaff(ItemComponent):
     def _valid_region(self, region) -> bool:
         return region.region_type == RegionType.EVENT and 'can_unlock' in region.condition
 
-    def ai_targets(self, unit, item) -> set:
+    def valid_targets(self, unit, item) -> set:
         targets = set()
         for region in game.level.regions:
             if self._valid_region(region):
                 for position in region.get_all_positions():
                     targets.add(position)
         return targets
-
-    def valid_targets(self, unit, item) -> set:
-        targets = self.ai_targets(unit, item)
-        return {t for t in targets if utils.calculate_distance(unit.position, t) in item_funcs.get_range(unit, item)}
 
     def splash(self, unit, item, position):
         return position, []
@@ -200,8 +200,7 @@ class Repair(ItemComponent):
     def _target_restrict(self, defender):
         # Unit has item that can be repaired
         for item in defender.items:
-            if item.uses and item.data['uses'] < item.data['starting_uses'] and \
-                    not item_system.unrepairable(defender, item):
+            if self.item_restrict(None, None, defender, item):
                 return True
         return False
 

@@ -1,3 +1,4 @@
+from app.events.speak_style import SpeakStyle, SpeakStyleLibrary
 from app.events.triggers import GenericTrigger
 from typing import List
 import unittest
@@ -5,6 +6,7 @@ from unittest.mock import MagicMock, patch, call
 
 from app.tests.mocks.mock_game import get_mock_game
 from app.events.event_commands import parse_text_to_command
+from app.utilities.enums import Alignments
 
 class EventUnitTests(unittest.TestCase):
     def setUp(self):
@@ -14,6 +16,7 @@ class EventUnitTests(unittest.TestCase):
         for patcher in self.patchers:
             patcher.start()
         self.game = get_mock_game()
+        self.game.speak_styles = SpeakStyleLibrary()
 
     def initialize_patchers(self):
         patchers = [
@@ -102,7 +105,8 @@ class EventUnitTests(unittest.TestCase):
                                        None, None, speaker=None, style_nid=None,
                                        autosize=False, speed=1, font_color=None,
                                        font_type='convo', num_lines=2, draw_cursor=True,
-                                       message_tail='message_bg_tail')
+                                       message_tail='message_bg_tail', transparency=0.05,
+                                       name_tag_bg='name_tag', flags={'no_block'})
         self.assertEqual(len(event.text_boxes), 1)
         self.assertEqual(event.priority_counter, 1)
 
@@ -118,7 +122,8 @@ class EventUnitTests(unittest.TestCase):
                                        (1, 2), 3, speaker='Eirika', style_nid=None,
                                        autosize=False, speed=5.0, font_color=None,
                                        font_type='convo', num_lines=2, draw_cursor=True,
-                                       message_tail='message_bg_tail')
+                                       message_tail='message_bg_tail', transparency=0.05,
+                                       name_tag_bg='name_tag', flags=set())
         self.assertEqual(mock_portrait.priority, 1)
 
         # Test #2a:
@@ -130,29 +135,78 @@ class EventUnitTests(unittest.TestCase):
                                        None, None, speaker='Eirika', style_nid=None,
                                        autosize=True, speed=1, font_color=None,
                                        font_type='convo', num_lines=2, draw_cursor=True,
-                                       message_tail='message_bg_tail')
+                                       message_tail='message_bg_tail', transparency=0.05,
+                                       name_tag_bg='name_tag', flags={'low_priority', 'fit'})
         self.assertEqual(mock_portrait.priority, 1)
 
         # test #3: dialog with speak style
         from app.events.speak_style import SpeakStyle
         event = self.create_event([])
-        self.game.speak_styles['test_style'] = SpeakStyle('test_style', 'Eirika', (1, 2),  3,
+        self.game.speak_styles['test_style'] = SpeakStyle('test_style', 'Eirika', (1, 2), 3,
                                                           4.5, 'some_color', 'some_font', 'some_box_type',
-                                                          6, True, 'message_bg_thought_tail')
+                                                          6, True, 'message_bg_thought_tail', 0.2)
         event_functions.speak(event, None, 'SPEAK_TEXT', style_nid='test_style')
         mock_dialog.assert_called_with('SPEAK_TEXT', None, 'some_box_type', (1, 2), 3,
                                        speaker='Eirika', style_nid='test_style',
                                        autosize=False, speed=4.5, font_color='some_color',
                                        font_type='some_font', num_lines=6, draw_cursor=True,
-                                       message_tail='message_bg_thought_tail')
+                                       message_tail='message_bg_thought_tail', transparency=0.2,
+                                       name_tag_bg='name_tag', flags=set())
 
         # test #4: special center text position
         event_functions.speak(event, None, 'SPEAK_TEXT', text_position='center')
         mock_dialog.assert_called_with('SPEAK_TEXT', None, 'message_bg_base',
-                                       'center', None, speaker=None, style_nid=None,
+                                       Alignments.CENTER, None, speaker=None, style_nid=None,
                                        autosize=False, speed=1, font_color=None,
                                        font_type='convo', num_lines=2, draw_cursor=True,
-                                       message_tail='message_bg_tail')
+                                       message_tail='message_bg_tail', transparency=0.05,
+                                       name_tag_bg='name_tag', flags=set())
+
+        # disable intercepting calls at the end of the test
+        dialog_patch.stop()
+
+    def test_overworld_menu_commands(self):
+        from app.events import overworld_event_functions
+        test_commands = [
+            "set_overworld_menu_option_visible;1;Battle;t",
+            "set_overworld_menu_option_enabled;1;Battle;t"
+        ]
+        event = self.create_event(test_commands)
+
+        event.run_command(event.parser.commands[0])
+        event.run_command(event.parser.commands[1])
+
+        self.game.overworld_controller.toggle_menu_option_enabled.assert_called_with('1', 'Battle', True)
+        self.game.overworld_controller.toggle_menu_option_visible.assert_called_with('1', 'Battle', True)
+
+    def test_textbox_command(self):
+        from app.events import event_functions
+        # test that event correctly parses speak commands
+        self.MACRO_test_event_commands(['textbox;Eirika;textbox_text'])
+
+        # replaces the imported class so we can intercept calls
+        dialog_patch = patch('app.engine.dialog.Dialog')
+        mock_dialog = dialog_patch.start()
+
+        # Test #1:
+        #   - event replaces text correctly
+        #   - event parses no_block correctly
+        #   - Dialog object is correctly initialized
+        #   - Dialog object is added to event text boxes
+        #   - Dialog object does not increment priority with no portrait
+        #   - Dialog object uses correct default arguments
+        # initialize testing command(s)
+        # we test event command parsing in another test, so just use a dummy event
+        event = self.create_event([])
+        event_functions.speak(event, None, '\u2028SPEAK_TEXT\u2028SPEAK_TEXT', flags={'no_block'})
+        mock_dialog.assert_called_with('SPEAK_TEXT{sub_break}SPEAK_TEXT{no_wait}', None, 'message_bg_base',
+                                       None, None, speaker=None, style_nid=None,
+                                       autosize=False, speed=1, font_color=None,
+                                       font_type='convo', num_lines=2, draw_cursor=True,
+                                       message_tail='message_bg_tail', transparency=0.05,
+                                       name_tag_bg='name_tag', flags={'no_block'})
+        self.assertEqual(len(event.text_boxes), 1)
+        self.assertEqual(event.priority_counter, 1)
 
         # disable intercepting calls at the end of the test
         dialog_patch.stop()

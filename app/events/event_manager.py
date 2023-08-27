@@ -82,6 +82,10 @@ class EventManager():
         if event in self.all_events:
             self.all_events.remove(event)
 
+    def clear(self):
+        self.event_stack.clear()
+        self.all_events.clear()
+
     def save(self):
         all_events = [event.save() for event in self.all_events]
         return all_events

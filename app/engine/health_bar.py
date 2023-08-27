@@ -1,13 +1,18 @@
 import random
+from functools import lru_cache
 
 import app.utilities as utils
-from app.constants import WINWIDTH, WINHEIGHT, TILEWIDTH, TILEHEIGHT, TILEX, TILEY
-from app.engine.sprites import SPRITES
+from app.constants import (TILEHEIGHT, TILEWIDTH, TILEX, TILEY, WINHEIGHT,
+                           WINWIDTH)
+from app.data.database.database import DB
+from app.engine import (combat_calcs, engine, icons, item_system,
+                        skill_system)
 from app.engine.fonts import FONT
-from app.engine.sound import get_sound_thread
-from app.engine import engine, combat_calcs, icons, equations, skill_system, item_system
-from app.engine.game_state import game
 from app.engine.game_counters import ANIMATION_COUNTERS
+from app.engine.game_state import game
+from app.engine.sound import get_sound_thread
+from app.engine.sprites import SPRITES
+
 
 class HealthBar():
     time_for_change_min = 200
@@ -44,18 +49,20 @@ class HealthBar():
                 self.old_hp = self.displayed_hp
                 self.transition_flag = False
 
+MAX_HP_PER_BAR = 40
 class CombatHealthBar(HealthBar):
-    full_hp_blip = SPRITES.get('full_hp_blip')
-    empty_hp_blip = SPRITES.get('empty_hp_blip')
-    overflow_hp_blip = SPRITES.get('overflow_hp_blip')
-    overflowpurple_hp_blip = SPRITES.get('overflowpurple_hp_blip')
-    end_hp_blip = engine.subsurface(full_hp_blip, (0, 0, 1, full_hp_blip.get_height()))
     colors = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1]
     speed = utils.frames2ms(2)
     time_for_change_min = 0
 
     def __init__(self, unit):
         super().__init__(unit)
+        self.full_hp_blip = SPRITES.get('full_hp_blip')
+        self.empty_hp_blip = SPRITES.get('empty_hp_blip')
+        self.overflow_hp_blip = SPRITES.get('overflow_hp_blip')
+        self.overflowpurple_hp_blip = SPRITES.get('overflowpurple_hp_blip')
+        self.end_full_hp_blip = engine.subsurface(self.full_hp_blip, (0, 0, 1, self.full_hp_blip.get_height()))
+        self.end_damaged_hp_blip = engine.subsurface(self.empty_hp_blip, (0, 0, 1, self.empty_hp_blip.get_height()))
         self.color_tick = 0
         self.heal_sound_update = 0
 
@@ -81,6 +88,51 @@ class CombatHealthBar(HealthBar):
     def done(self) -> bool:
         return self.displayed_hp == self.unit.get_hp()
 
+    @lru_cache(1)
+    def _create_hp_bar_surf(self, full_hp: int, actual_hp: int, overflow: int = 0) -> engine.Surface:
+        """Creates a single hp bar row.
+        """
+        surf = engine.create_surface((full_hp * 2 + 1, self.full_hp_blip.get_height()))
+        if overflow > 2:
+            hp_blip = engine.subsurface(self.overflowpurple_hp_blip, (self.colors[self.color_tick] * 2, 0, 2, self.overflowpurple_hp_blip.get_height()))
+            damage_blip = hp_blip
+        elif overflow == 2:
+            hp_blip = engine.subsurface(self.overflowpurple_hp_blip, (self.colors[self.color_tick] * 2, 0, 2, self.overflowpurple_hp_blip.get_height()))
+            damage_blip = engine.subsurface(self.overflow_hp_blip, (self.colors[self.color_tick] * 2, 0, 2, self.overflow_hp_blip.get_height()))
+        elif overflow == 1:
+            hp_blip = engine.subsurface(self.overflow_hp_blip, (self.colors[self.color_tick] * 2, 0, 2, self.overflow_hp_blip.get_height()))
+            damage_blip = engine.subsurface(self.full_hp_blip, (self.colors[self.color_tick] * 2, 0, 2, self.full_hp_blip.get_height()))
+        else:
+            hp_blip = engine.subsurface(self.full_hp_blip, (self.colors[self.color_tick] * 2, 0, 2, self.full_hp_blip.get_height()))
+            damage_blip = self.empty_hp_blip
+        for idx in range(actual_hp):
+            surf.blit(hp_blip, (idx * 2, 0))
+        for idx in range(full_hp - actual_hp):
+            surf.blit(damage_blip, ((idx + actual_hp) * 2, 0))
+        if full_hp == actual_hp:
+            end_blip = engine.subsurface(hp_blip, (0, 0, 1, hp_blip.get_height()))
+        else:
+            end_blip = engine.subsurface(damage_blip, (0, 0, 1, damage_blip.get_height()))
+        surf.blit(end_blip, (full_hp * 2, 0))
+        return surf
+
+    @lru_cache(1)
+    def _create_double_hp_bar_surf(self, full_hp: int, actual_hp: int, overflow: int = 0) -> engine.Surface:
+        """Creates two HP bar rows stacked on top of one another"""
+        surf = engine.create_surface((MAX_HP_PER_BAR * 2 + 1, 2 * self.full_hp_blip.get_height()), True)
+        full_hp = min(full_hp, 2 * MAX_HP_PER_BAR)
+
+        bottom_full_hp = min(full_hp, MAX_HP_PER_BAR)
+        bottom_actual_hp = min(actual_hp, MAX_HP_PER_BAR)
+        bottom_bar = self._create_hp_bar_surf(bottom_full_hp, bottom_actual_hp, overflow)
+        surf.blit(bottom_bar, (0, self.full_hp_blip.get_height()))
+
+        top_full_hp = max(full_hp - MAX_HP_PER_BAR, 0)
+        top_actual_hp = max(actual_hp - MAX_HP_PER_BAR, 0)
+        top_bar = self._create_hp_bar_surf(top_full_hp, top_actual_hp, overflow)
+        surf.blit(top_bar, (0, 0))
+        return surf
+
     def draw(self, surf, left, top):
         font = FONT['number-small2']
         if self.big_number():
@@ -89,59 +141,18 @@ class CombatHealthBar(HealthBar):
             font.blit_right(str(self.displayed_hp), surf, (left, top - 4))
         else:
             font.blit_right('??', surf, (left, top - 4))
-
-        full_hp_blip = engine.subsurface(self.full_hp_blip, (self.colors[self.color_tick] * 2, 0, 2, self.full_hp_blip.get_height()))
-        overflow_hp_blip = engine.subsurface(self.overflow_hp_blip, (self.colors[self.color_tick] * 2, 0, 2, self.overflow_hp_blip.get_height()))
-        overflowpurple_hp_blip = engine.subsurface(self.overflowpurple_hp_blip, (self.colors[self.color_tick] * 2, 0, 2, self.overflowpurple_hp_blip.get_height()))
-        if self.unit.get_max_hp() <= 40:
-            for idx in range(self.displayed_hp):
-                surf.blit(full_hp_blip, (left + idx * 2 + 5, top + 1))
-            for idx in range(self.unit.get_max_hp() - self.displayed_hp):
-                surf.blit(self.empty_hp_blip, (left + (idx + self.displayed_hp) * 2 + 5, top + 1))
-            surf.blit(self.end_hp_blip, (left + self.unit.get_max_hp() * 2 + 5, top + 1))
+        max_hp = self.unit.get_max_hp()
+        curr_hp = self.displayed_hp
+        if max_hp <= MAX_HP_PER_BAR:
+            hp_bar = self._create_hp_bar_surf(max_hp, curr_hp)
+            surf.blit(hp_bar, (left + 5, top + 1))
         else:
-            # Lower 40 hp
-            for idx in range(min(self.displayed_hp, 40)):
-                surf.blit(full_hp_blip, (left + idx * 2 + 5, top + 4))
-            for idx in range(max(40 - self.displayed_hp, 0)):
-                surf.blit(self.empty_hp_blip, (left + (idx + self.displayed_hp) * 2 + 5, top + 4))
-            surf.blit(self.end_hp_blip, (left + 40 * 2 + 5, top + 4))
-            # Upper 40 hp
-            for idx in range(utils.clamp(self.displayed_hp - 40, 0, 40)):
-                surf.blit(full_hp_blip, (left + idx * 2 + 5, top - 4))
-            right = utils.clamp(self.unit.get_max_hp(), 0, 80)
-            for idx in range(right - max(40, self.displayed_hp)):
-                surf.blit(self.empty_hp_blip, (left + (idx + max(self.displayed_hp - 40, 0)) * 2 + 5, top - 4))
-            surf.blit(self.end_hp_blip, (left + (right - 40) * 2 + 5, top - 4))
-            # These are drawn OVER the previous 40 + 40
-            # Lower 80 Overflow hp
-            for idx in range(utils.clamp(self.displayed_hp - 80, 0, 40)):
-                surf.blit(overflow_hp_blip, (left + idx * 2 + 5, top + 4))
-            right = utils.clamp(self.unit.get_max_hp(), 0, 40)
-            for idx in range(right - max(80, self.displayed_hp)):
-                surf.blit(self.empty_hp_blip, (left + (idx + self.displayed_hp) * 2 + 5, top + 4))
-            surf.blit(self.end_hp_blip, (left + (right - 80) * 2 + 5, top + 4))
-            # Upper 80 Overflow hp
-            for idx in range(utils.clamp(self.displayed_hp - 120, 0, 40)):
-                surf.blit(overflow_hp_blip, (left + idx * 2 + 5, top - 4))
-            right = utils.clamp(self.unit.get_max_hp(), 0, 40)
-            for idx in range(right - max(120, self.displayed_hp)):
-                surf.blit(self.empty_hp_blip, (left + (idx + self.displayed_hp) * 2 + 5, top - 4))
-            surf.blit(self.end_hp_blip, (left + (right - 120) * 2 + 5, top - 4))
-            # Lower 120 Overflowpurple hp
-            for idx in range(utils.clamp(self.displayed_hp - 160, 0, 40)):
-                surf.blit(overflowpurple_hp_blip, (left + idx * 2 + 5, top + 4))
-            right = utils.clamp(self.unit.get_max_hp(), 0, 40)
-            for idx in range(right - max(160, self.displayed_hp)):
-                surf.blit(self.empty_hp_blip, (left + (idx + self.displayed_hp) * 2 + 5, top + 4))
-            surf.blit(self.end_hp_blip, (left + (right - 160) * 2 + 5, top + 4))
-            # Upper 120 Overflowpurple hp
-            for idx in range(utils.clamp(self.displayed_hp - 200, 0, 40)):
-                surf.blit(overflowpurple_hp_blip, (left + idx * 2 + 5, top - 4))
-            right = utils.clamp(self.unit.get_max_hp(), 0, 40)
-            for idx in range(right - max(200, self.displayed_hp)):
-                surf.blit(self.empty_hp_blip, (left + (idx + self.displayed_hp) * 2 + 5, top - 4))
-            surf.blit(self.end_hp_blip, (left + (right - 200) * 2 + 5, top - 4))
+            overflow_level = 0
+            while curr_hp > 2 * MAX_HP_PER_BAR:
+                overflow_level += 1
+                curr_hp -= 2 * MAX_HP_PER_BAR
+            double_hp_bars = self._create_double_hp_bar_surf(max_hp, curr_hp, overflow_level)
+            surf.blit(double_hp_bars, (left + 5, top - 4))
 
 class MapHealthBar(HealthBar):
     time_for_change_min = 200
@@ -216,12 +227,12 @@ class MapCombatInfo():
         self.skill_icons.clear()
 
         # Handle surfaces
-        team = unit.team
+        team = DB.teams.get(unit.team)
 
         self.stats_surf = None
-        self.bg_surf = SPRITES.get('health_' + utils.get_team_color(team)).convert_alpha()
-        self.c_surf = SPRITES.get('combat_stats_' + utils.get_team_color(team)).convert_alpha()
-        self.gem = SPRITES.get('combat_gem_' + utils.get_team_color(team)).convert_alpha()
+        self.bg_surf = SPRITES.get('health_' + team.combat_color).convert_alpha()
+        self.c_surf = SPRITES.get('combat_stats_' + team.combat_color).convert_alpha()
+        self.gem = SPRITES.get('combat_gem_' + team.combat_color).convert_alpha()
 
     def reset(self):
         self.draw_method = None
@@ -334,7 +345,7 @@ class MapCombatInfo():
                 if top_gap > bottom_gap and top_gap > middle_gap:
                     y_pos = top_gap * TILEHEIGHT - 12 - height - 13  # Stat surf
                 elif bottom_gap > top_gap and bottom_gap > middle_gap:
-                    y_pos = (bottom_gap + 1) * TILEHEIGHT + 12
+                    y_pos = (TILEY - 1 - bottom_gap//2) * TILEHEIGHT - 12
                 else:
                     y_pos = WINHEIGHT//4 - height//2 - 13//2 if rel_1 < TILEY//2 else 3*WINHEIGHT//4 - height//2 - 13//2
                     x_pos = WINWIDTH//4 - width//2 if pos1[0] - camera_pos[0] > TILEX//2 else 3*WINWIDTH//4 - width//2
@@ -342,7 +353,7 @@ class MapCombatInfo():
             self.true_position = (x_pos, y_pos)
 
         elif self.draw_method == 'splash':
-            pos = self.unit.position or self.unit.sprite.fake_position
+            pos = self.unit.sprite.position
             x_pos = pos[0] - game.camera.get_x()
             x_pos = utils.clamp(x_pos, 3, TILEX - 2)
             if pos[1] - game.camera.get_y() < TILEY//2:

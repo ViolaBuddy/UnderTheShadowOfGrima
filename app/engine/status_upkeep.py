@@ -85,6 +85,7 @@ class StatusUpkeepState(MapState):
                         action.do(act)
                     self.check_death()
                     self.cur_unit = None
+                    return 'repeat'
                 else:
                     self.cur_unit = None
                     return 'repeat'
@@ -145,8 +146,15 @@ class StatusUpkeepState(MapState):
     def check_death(self):
         if self.cur_unit.get_hp() <= 0:
             # Handle death
+            if self.is_traveler(self.cur_unit):
+                # If you are a paired up unit which would die
+                # leave the pair up and sit in your current position
+                # until you do die!
+                owner = self.is_traveler(self.cur_unit)
+                action.execute(action.Separate(owner, self.cur_unit, owner.position))
             game.death.should_die(self.cur_unit)
             game.state.change('dying')
+            action.UpdateRecords('death', (None, self.cur_unit.nid)).do()
             game.events.trigger(triggers.UnitDeath(self.cur_unit, None, position=self.cur_unit.position))
             skill_system.on_death(self.cur_unit)
         else:

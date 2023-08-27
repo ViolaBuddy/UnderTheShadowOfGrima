@@ -9,8 +9,7 @@ if TYPE_CHECKING:
     from app.engine.game_state import GameState
     from app.engine.objects.unit import UnitObject
 
-from app.engine.overworld.overworld_map_sprites import (
-                                                        OverworldUnitSprite)
+from app.engine.overworld.overworld_map_sprites import OverworldUnitSprite
 from app.engine.unit_sound import UnitSound
 from app.utilities.typing import NID, Point
 

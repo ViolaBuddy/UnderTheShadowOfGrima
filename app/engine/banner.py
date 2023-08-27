@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from app.constants import WINWIDTH, WINHEIGHT
 from app.engine.sprites import SPRITES
-from app.engine.fonts import FONT
 from app.engine import engine, base_surf, image_mods, icons, text_funcs, item_system
 from app.engine.graphics.text.text_renderer import text_width, render_text
 from app.data.database import skills, items
+from app.data.database.database import DB
 
 from typing import TYPE_CHECKING
 
@@ -96,7 +96,7 @@ class StoleItem(Banner):
         else:
             self.text = '<blue>{name}</> stole {article} <{item_color}>{item_name}</>.'.format(name=unit.name, article=article, item_color=item_color, item_name=item.name)
         self.figure_out_size()
-        if self.unit.team in ('player', 'other'):
+        if self.unit.team in DB.teams.allies:
             self.sound = 'Item'
         else:
             self.sound = 'ItemBreak'
@@ -109,6 +109,15 @@ class SentToConvoy(Banner):
         self.text = '<{item_color}>{item_name}</> sent to convoy.'.format(item_color=item_color, item_name=item.name)
         self.figure_out_size()
         self.sound = 'Item'
+
+class LostItem(Banner):
+    def __init__(self, item: ItemObject):
+        super().__init__()
+        self.item = item
+        item_color = item_system.text_color(None, item) if item_system.text_color(None, item) else 'blue'
+        self.text = '<{item_color}>{item_name}</> was discarded.'.format(item_color=item_color, item_name=item.name)
+        self.figure_out_size()
+        self.sound = 'ItemBreak'
 
 class BrokenItem(Banner):
     def __init__(self, unit: UnitObject, item: ItemObject):
@@ -162,7 +171,7 @@ class TakeSkill(GiveSkill):
 
 class Custom(Banner):
     def __init__(self, text, sound=None):
-        self.text = text
+        self.text = text_funcs.translate(text)
         self.item = None
         self.figure_out_size()
         self.sound = sound

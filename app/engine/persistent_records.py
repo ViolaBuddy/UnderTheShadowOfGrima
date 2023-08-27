@@ -37,12 +37,44 @@ class PersistentRecordManager(Data):
         else:
             logging.info("Record with nid of %s doesn't exist")
 
+    def replace(self, nid, value):
+        if nid in self.keys():
+            record = super().get(nid)
+            record.value = value
+        else:
+            self.append(PersistentRecord(nid, value))
+        persistent_data.serialize(self.location, self.save())
+
     def delete(self, nid):
         if nid in self.keys():
             self.remove_key(nid)
             persistent_data.serialize(self.location, self.save())
         else:
             logging.info("Record with nid of %s doesn't exist")
+    
+    def unlock_difficulty(self, difficultyMode: str):
+        if difficultyMode in self.keys():
+            logging.info("Difficulty with nid of %s already unlocked")
+            return
+        else:
+            self.append(PersistentRecord(difficultyMode, True))
+        persistent_data.serialize(self.location, self.save())
+    
+    def check_difficulty_unlocked(self, difficultyMode: str):
+        if difficultyMode in self.keys():
+            return super().get(difficultyMode).value
+        else:
+            return False
+
+def reset():
+    game_id = str(DB.constants.value('game_nid'))
+    location = 'saves/' + game_id + '-persistent_records.p'
+    RECORDS.location = location
+    data = persistent_data.deserialize(location)
+    if data:
+        RECORDS.restore(data)
+    else:
+        RECORDS.clear()
 
 # Make sure to reload all persistent records whenever we start the engine
 game_id = str(DB.constants.value('game_nid'))

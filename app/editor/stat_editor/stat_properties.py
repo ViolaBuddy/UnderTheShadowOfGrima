@@ -1,11 +1,11 @@
 from PyQt5.QtWidgets import QWidget, QLineEdit, QMessageBox, QVBoxLayout, \
-    QSpinBox
+    QSpinBox, QCheckBox
 from PyQt5.QtCore import Qt
 
 from app.data.database.database import DB
 
 from app.utilities import str_utils
-from app.extensions.custom_gui import PropertyBox, ComboBox
+from app.extensions.custom_gui import PropertyBox, ComboBox, PropertyCheckBox
 from app.editor.lib.components.validated_line_edit import NidLineEdit
 
 class StatTypeProperties(QWidget):
@@ -18,31 +18,37 @@ class StatTypeProperties(QWidget):
 
         name_section = QVBoxLayout()
 
-        self.nid_box = PropertyBox("Unique ID", NidLineEdit, self)
+        self.nid_box = PropertyBox(_("Unique ID"), NidLineEdit, self)
         self.nid_box.edit.textChanged.connect(self.nid_changed)
         self.nid_box.edit.editingFinished.connect(self.nid_done_editing)
         name_section.addWidget(self.nid_box)
 
-        self.name_box = PropertyBox("Display Name", QLineEdit, self)
+        self.name_box = PropertyBox(_("Display Name"), QLineEdit, self)
 
         self.name_box.edit.textChanged.connect(self.name_changed)
         name_section.addWidget(self.name_box)
 
-        self.max_box = PropertyBox("Maximum", QSpinBox, self)
+        self.max_box = PropertyBox(_("Maximum"), QSpinBox, self)
         self.max_box.edit.setRange(0, 255)
         self.max_box.edit.setAlignment(Qt.AlignRight)
         self.max_box.edit.valueChanged.connect(self.maximum_changed)
         name_section.addWidget(self.max_box)
 
-        self.desc_box = PropertyBox("Description", QLineEdit, self)
+        self.desc_box = PropertyBox(_("Description"), QLineEdit, self)
         self.desc_box.edit.textChanged.connect(self.desc_changed)
         name_section.addWidget(self.desc_box)
 
-        self.position_box = PropertyBox("Position", ComboBox, self)
+        self.position_box = PropertyBox(_("Position"), ComboBox, self)
         self.position_box.edit.addItems(["hidden", "left", "right"])
         self.position_box.setToolTip("Column within Info Menu in engine")
         self.position_box.edit.currentTextChanged.connect(self.position_changed)
         name_section.addWidget(self.position_box)
+
+        #colored growths
+        self.growth_colors_box = PropertyCheckBox(_("Colored Growths"), QCheckBox, self)
+        self.growth_colors_box.edit.stateChanged.connect(self.growth_colors_changed)
+        self.growth_colors_box.setToolTip(_("Select individually which stat growths will change color based on their value"))
+        name_section.addWidget(self.growth_colors_box)
 
         self.setLayout(name_section)
         name_section.setAlignment(Qt.AlignTop)
@@ -111,10 +117,14 @@ class StatTypeProperties(QWidget):
     def maximum_changed(self, val):
         self.current.maximum = val
 
+    def growth_colors_changed(self, state):
+        self.current.growth_colors = bool(state)
+
     def set_current(self, current):
         self.current = current
         self.nid_box.edit.setText(current.nid)
         self.name_box.edit.setText(current.name)
         self.max_box.edit.setValue(current.maximum)
+        self.growth_colors_box.edit.setChecked(bool(current.growth_colors))
         self.desc_box.edit.setText(current.desc)
         self.position_box.edit.setValue(current.position)

@@ -16,7 +16,7 @@ class ClassDatabase(DatabaseTab):
     @classmethod
     def create(cls, parent=None):
         data = DB.classes
-        title = "Class"
+        title = _("Class")
         right_frame = class_properties.ClassProperties
 
         def deletion_func(model, index):
@@ -32,7 +32,7 @@ class ClassDatabase(DatabaseTab):
     def import_data(self):
         settings = MainSettingsController()
         starting_path = settings.get_last_open_path()
-        fn, ok = QFileDialog.getOpenFileName(self, "Import classes from class_info.xml", starting_path, "Class Info XML (class_info.xml);;All Files(*)")
+        fn, ok = QFileDialog.getOpenFileName(self, _("Import classes from class_info.xml"), starting_path, "Class Info XML (class_info.xml);;All Files(*)")
         if ok and fn:
             parent_dir = os.path.split(fn)[0]
             settings.set_last_open_path(parent_dir)

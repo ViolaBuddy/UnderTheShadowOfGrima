@@ -25,6 +25,21 @@ from app.engine.fluid_scroll import FluidScroll
 import app.engine.config as cf
 from app.events import triggers
 
+def base_background():
+    # build background
+    bg_name = game.game_vars.get('_base_bg_name')
+    panorama = None
+    if bg_name:
+        panorama = RESOURCES.panoramas.get(bg_name)
+    if panorama:
+        panorama = RESOURCES.panoramas.get(bg_name)
+        bg = background.PanoramaBackground(panorama)
+    else:
+        panorama = RESOURCES.panoramas.get('default_background')
+        bg = background.ScrollingBackground(panorama)
+        bg.scroll_speed = 50
+    game.memory['base_bg'] = bg
+    return bg
 
 class BaseMainState(State):
     name = 'base_main'
@@ -68,13 +83,15 @@ class BaseMainState(State):
 
         # initialize custom options and events
         events = [None for option in options]
-        additional_options = game.game_vars.get('_base_additional_options')
-        additional_ignore = game.game_vars.get('_base_options_disabled')
-        additional_events = game.game_vars.get('_base_options_events')
+        additional_options = game.game_vars.get('_base_additional_options', [])
+        additional_ignore = game.game_vars.get('_base_options_disabled', [])
+        additional_events = game.game_vars.get('_base_options_events', [])
 
-        options = options + additional_options if additional_options else options
-        ignore = ignore + additional_ignore if additional_options else ignore
-        events = events + additional_events if additional_events else events
+        option_idx = options.index('Options')
+
+        options = options[:option_idx] + additional_options + options[option_idx:]
+        ignore = ignore[:option_idx] + additional_ignore + ignore[option_idx:]
+        events = events[:option_idx] + additional_events + events[option_idx:]
         return options, ignore, events
 
     def start(self):
@@ -84,33 +101,30 @@ class BaseMainState(State):
         game.cursor.hide()
         game.cursor.autocursor()
         game.boundary.hide()
-        # build background
-        bg_name = game.game_vars.get('_base_bg_name')
-        panorama = None
-        if bg_name:
-            panorama = RESOURCES.panoramas.get(bg_name)
-        if panorama:
-            panorama = RESOURCES.panoramas.get(bg_name)
-            self.bg = background.PanoramaBackground(panorama)
-        else:
-            panorama = RESOURCES.panoramas.get('default_background')
-            self.bg = background.ScrollingBackground(panorama)
-            self.bg.scroll_speed = 50
-        game.memory['base_bg'] = self.bg
+
+        self.bg = base_background()
 
         self.is_from_overworld = game.is_displaying_overworld()
 
         options, ignore, events_on_options = self.populate_options()
         self.events_on_option_select = events_on_options
 
-        topleft = 4, WINHEIGHT // 2 - (len(options) * 16 + 8) // 2
+        max_num_options = 9
+        num_options = min(len(options), max_num_options)
+        topleft = 4, WINHEIGHT // 2 - (num_options * 16 + 8) // 2
         self.menu = menus.Choice(None, options, topleft=topleft)
+        self.menu.set_limit(max_num_options)
         self.menu.set_ignore(ignore)
 
         game.events.trigger(triggers.OnBaseStart())
 
         game.state.change('transition_in')
         return 'repeat'
+
+    def begin(self):
+        base_music = game.game_vars.get('_base_music')
+        if base_music:
+            get_sound_thread().fade_in(base_music)
 
     def take_input(self, event):
         first_push = self.fluid.update()
@@ -236,8 +250,8 @@ class BaseMarketSelectState(prep.PrepManageState):
         elif event == 'INFO':
             get_sound_thread().play_sfx('Select 1')
             game.memory['scroll_units'] = game.get_units_in_party()
-            game.memory['next_state'] = 'info_menu'
             game.memory['current_unit'] = self.menu.get_current()
+            game.memory['next_state'] = 'info_menu'
             game.state.change('transition_to')
 
 
@@ -343,7 +357,6 @@ class SupportDisplay():
             else:
                 continue
             other_unit_nids.append(other_unit_nid)
-        other_unit_nids = sorted(other_unit_nids)
         return other_unit_nids
 
     def click_selection(self) -> bool:
@@ -436,7 +449,7 @@ class SupportDisplay():
                     other_unit = game.get_unit(other_unit_nid)
                     if other_unit.dead:
                         map_sprite = other_unit.sprite.create_image('gray')
-                    elif self.char_idx - start_index == idx:
+                    elif self.draw_cursor and self.char_idx - start_index == idx:
                         map_sprite = other_unit.sprite.create_image('active')
                     else:
                         map_sprite = other_unit.sprite.create_image('passive')
@@ -551,6 +564,8 @@ class BaseSupportsState(State):
         # Filter only to units with supports
         self.units = [unit for unit in player_units if
                       any(prefab.unit1 == unit.nid or prefab.unit2 == unit.nid for prefab in DB.support_pairs)]
+        # sort to official unit order
+        self.units = sorted(self.units, key=lambda unit: DB.units.index(unit.nid) if unit.nid in DB.units.keys() else 999999)
 
         self.menu = menus.Table(None, self.units, (9, 1), (4, 4))
         self.menu.set_mode('unit')
@@ -634,9 +649,10 @@ class BaseSupportsState(State):
                 self.display.draw_cursor = True
 
         elif event == 'INFO':
+            get_sound_thread().play_sfx('Select 1')
             game.memory['scroll_units'] = self.units
-            game.memory['next_state'] = 'info_menu'
             game.memory['current_unit'] = self.menu.get_current()
+            game.memory['next_state'] = 'info_menu'
             game.state.change('transition_to')
 
     def update(self):
@@ -657,16 +673,16 @@ class BaseCodexChildState(State):
     name = 'base_codex_child'
     transparent = True
 
-    def start(self):
-        self.fluid = FluidScroll()
-
+    def get_options(self) -> List[str]:
         options = []
         unlocked_lore = [lore for lore in DB.lore if lore.nid in game.unlocked_lore]
         if unlocked_lore:
             options.append('Library')
         if game.game_vars['_world_map_in_base']:
             options.append('Map')
-        options.append('Records')
+        if len(game.records.get_levels()) > 1:
+            # Ignore current level. Only appears if there's been at least one level
+            options.append('Records')
         if DB.constants.value('sound_room_in_codex'):
             options.append('Sound Room')
         if ACHIEVEMENTS:
@@ -674,6 +690,12 @@ class BaseCodexChildState(State):
         unlocked_guide = [lore for lore in unlocked_lore if lore.category == 'Guide']
         if unlocked_guide:
             options.append('Guide')
+        return options
+
+    def start(self):
+        self.fluid = FluidScroll()
+
+        options = self.get_options()
 
         selection = game.memory['option_owner']
         topleft = game.memory['option_menu']
@@ -835,7 +857,10 @@ class BaseLibraryState(State):
             self.menu.set_ignore(ignore)
 
     def start(self):
-        self.bg = game.memory['base_bg']
+        if 'base_bg' in game.memory:
+            self.bg = game.memory['base_bg']
+        else:
+            self.bg = base_background()
 
         unlocked_lore = [lore for lore in DB.lore if lore.nid in game.unlocked_lore and lore.category != 'Guide']
         sorted_lore = sorted(unlocked_lore, key=lambda x: x.category)
@@ -849,7 +874,6 @@ class BaseLibraryState(State):
                 ignore.append(True)
             options.append(lore)
             ignore.append(False)
-
         self._build_menu(options, ignore)
 
         self.display = LoreDisplay()
@@ -936,11 +960,10 @@ class BaseGuideState(BaseLibraryState):
     name = 'base_guide'
 
     def start(self):
-        self.bg = game.memory.get('base_bg')
-        if not self.bg:
-            panorama = RESOURCES.panoramas.get('default_background')
-            self.bg = background.ScrollingBackground(panorama)
-            self.bg.scroll_speed = 50
+        if 'base_bg' in game.memory:
+            self.bg = game.memory['base_bg']
+        else:
+            self.bg = base_background()
 
         unlocked_lore = [lore for lore in DB.lore if lore.nid in game.unlocked_lore and lore.category == 'Guide']
         self.categories = ["Guide"]
@@ -1195,8 +1218,8 @@ class BaseBEXPSelectState(prep.PrepManageState):
         elif event == 'INFO':
             get_sound_thread().play_sfx('Select 1')
             game.memory['scroll_units'] = game.get_units_in_party()
-            game.memory['next_state'] = 'info_menu'
             game.memory['current_unit'] = self.menu.get_current()
+            game.memory['next_state'] = 'info_menu'
             game.state.change('transition_to')
 
 
@@ -1474,7 +1497,7 @@ class BaseSoundRoomState(State):
 
     def draw_sound_room_title(self, surf, topleft, music_name):
         surf.blit(SPRITES.get('chapter_select_green'), (topleft[0], topleft[1]))
-        FONT['chapter-white'].blit_center(music_name, surf, (topleft[0] + 98, topleft[1] + 8))
+        FONT['convo-white'].blit_center(music_name, surf, (topleft[0] + 98, topleft[1] + 8))
         return surf
 
     def draw_volume(self, surf):
