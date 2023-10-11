@@ -1,0 +1,63 @@
+[
+    {
+        "nid": "0",
+        "name": "Duat",
+        "tilemap": "DreamMap",
+        "bg_tilemap": null,
+        "party": "Eirika",
+        "music": {},
+        "objective": {
+            "simple": "Ba and Ka reach gate",
+            "win": "Ba and Ka reach gate",
+            "loss": "Isis, Ba, or Ka is defeated"
+        },
+        "roam": false,
+        "roam_unit": null,
+        "go_to_overworld": false,
+        "should_record": true,
+        "units": [
+            {
+                "nid": "Isis",
+                "team": "player",
+                "ai": "None",
+                "roam_ai": null,
+                "ai_group": "",
+                "starting_position": [
+                    9,
+                    30
+                ],
+                "starting_traveler": null,
+                "generic": false
+            },
+            {
+                "nid": "Ka",
+                "team": "other",
+                "ai": "None",
+                "roam_ai": null,
+                "ai_group": "",
+                "starting_position": [
+                    7,
+                    23
+                ],
+                "starting_traveler": null,
+                "generic": false
+            },
+            {
+                "nid": "Ba",
+                "team": "other",
+                "ai": "None",
+                "roam_ai": null,
+                "ai_group": "",
+                "starting_position": [
+                    17,
+                    14
+                ],
+                "starting_traveler": null,
+                "generic": false
+            }
+        ],
+        "regions": [],
+        "unit_groups": [],
+        "ai_groups": []
+    }
+]

@@ -1,4 +1,4 @@
-# Escape from Plegia
+# Under the Shadow of Grima
 
 A Fire Emblem fangame made in the [Lex Talionis engine](https://gitlab.com/rainlash/lt-maker). Based on the events of Fire Emblem Awakening.
 
