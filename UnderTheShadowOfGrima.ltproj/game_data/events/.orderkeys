@@ -101,5 +101,9 @@
     "global_Summon_Soldiers.json": 99,
     "global_Support_Gain.json": 100,
     "2_OnOverworldEnter.json": 101,
-    "2_OnLevelSelect.json": 102
+    "2_OnLevelSelect.json": 102,
+    "0_Level0_Start_Logic.json": 103,
+    "0_Recruit_Ba.json": 104,
+    "0_Recruit_Ka.json": 105,
+    "0_Level0_Teleport1.json": 106
 }

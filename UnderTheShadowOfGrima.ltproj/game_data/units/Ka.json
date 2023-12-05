@@ -5,7 +5,7 @@
         "desc": "A part of Queen Malika's soul.\nThe life force of the body.",
         "variant": "",
         "level": 10,
-        "klass": "Manakete",
+        "klass": "Soul",
         "tags": [],
         "bases": {
             "HP": 20,

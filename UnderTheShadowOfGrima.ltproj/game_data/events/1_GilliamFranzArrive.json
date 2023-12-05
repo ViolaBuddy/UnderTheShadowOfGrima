@@ -128,6 +128,6 @@
         ],
         "only_once": false,
         "priority": 20,
-        "source": ""
+        "source": "# Move Franz and Gilliam into the game\nspawn_group;Rein;North;Starting\n# Hover cursor over Franz\nmove_cursor;Franz\ndisp_cursor;1\nwait;1000\ndisp_cursor;0\n# Franz and Gilliam converse\nadd_portrait;Franz;Left;no_block\nadd_portrait;Gilliam;Right\nspeak;Franz;Sir Gilliam, is that Mulan? Have we reached Frelia's border already?\nspeak;Gilliam;Aye, we have. Her Highness Princess Tana should be inside the castle.\nspeak;Franz;But look--the countryside is crawling with Grado soldiers!|Where's the castle guard? Has Mulan fallen? Are we too late?\nspeak;Gilliam;Too tough to say from here.|Princess Tana's in no danger if they want her as a bargaining tool.|We men of the Eastern Watch will see her to safety.\nspeak;Franz;Yes... Yes, of course.{br}We mustn't give up. We must move.|We must retake the castle. Then, we ride forth to Princess Eirika's aid.\nspeak;Gilliam;I've stronger armor than you do. I'll take the lead. Watch my back.\nremove_portrait;Franz;no_block\nremove_portrait;Gilliam\n"
     }
 ]

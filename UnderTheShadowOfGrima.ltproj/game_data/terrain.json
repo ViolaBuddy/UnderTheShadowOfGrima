@@ -18,9 +18,9 @@
         "nid": "0",
         "name": "--",
         "color": [
+            255,
             0,
-            0,
-            0
+            255
         ],
         "minimap": "Wall",
         "platform": "Wall",
@@ -85,7 +85,7 @@
         "minimap": "Floor",
         "platform": "Floor",
         "background": "combat_castle3",
-        "mtype": "Normal",
+        "mtype": "Stairs",
         "opaque": false,
         "status": null
     },

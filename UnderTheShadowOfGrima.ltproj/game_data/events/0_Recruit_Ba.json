@@ -1,0 +1,62 @@
+[
+    {
+        "name": "Recruit Ba",
+        "trigger": "on_talk",
+        "level_nid": "0",
+        "condition": "unit.nid == 'Isis' and unit2.nid == 'Ba'",
+        "commands": [
+            [
+                "add_portrait",
+                [
+                    "Isis",
+                    "Left",
+                    "no_block"
+                ]
+            ],
+            [
+                "add_portrait",
+                [
+                    "Ba",
+                    "Right"
+                ]
+            ],
+            [
+                "speak",
+                [
+                    "Isis",
+                    "Ba of Queen Malika, I am Priestess Isis. I am here to guide you to the afterlife.|Although your time in this realm was cut short, you must not dawdle here,|lest Grima's force find you. Please follow my lead."
+                ]
+            ],
+            [
+                "remove_portrait",
+                [
+                    "Isis",
+                    "no_block"
+                ]
+            ],
+            [
+                "remove_portrait",
+                [
+                    "Ba"
+                ]
+            ],
+            [
+                "change_team",
+                [
+                    "Ba (Ba)",
+                    "player"
+                ]
+            ],
+            [
+                "remove_talk",
+                [
+                    "Isis (Isis)",
+                    "Ba (Ba)"
+                ]
+            ]
+        ],
+        "only_once": false,
+        "priority": 20,
+        "source": "add_portrait;Isis;Left;no_block\nadd_portrait;Ba;Right\nspeak;Isis;Ba of Queen Malika, I am Priestess Isis. I am here to guide you to the afterlife.|Although your time in this realm was cut short, you must not dawdle here,|lest Grima's force find you. Please follow my lead.\nremove_portrait;Isis;no_block\nremove_portrait;Ba\nchange_team;Ba (Ba);player\nremove_talk;Isis (Isis);Ba (Ba)\n"
+    }
+]

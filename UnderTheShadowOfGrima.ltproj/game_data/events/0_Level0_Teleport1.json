@@ -1,0 +1,21 @@
+[
+    {
+        "name": "Level0 Teleport1",
+        "trigger": "Teleport",
+        "level_nid": "0",
+        "condition": "unit.position == (9,19)",
+        "commands": [
+            [
+                "move_unit",
+                [
+                    "{unit}",
+                    "(7,11)",
+                    "warp"
+                ]
+            ]
+        ],
+        "only_once": false,
+        "priority": 20,
+        "source": "move_unit;{unit};(7,11);warp"
+    }
+]

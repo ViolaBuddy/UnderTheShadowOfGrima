@@ -4,7 +4,7 @@
         "name": "Soul",
         "desc": "",
         "tier": 1,
-        "movement_group": "Fliers",
+        "movement_group": "Soul",
         "promotes_from": null,
         "turns_into": [],
         "tags": [
