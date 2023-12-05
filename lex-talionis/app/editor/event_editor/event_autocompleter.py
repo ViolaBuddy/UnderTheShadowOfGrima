@@ -1,158 +1,264 @@
-from typing import List, Tuple, Type
+from __future__ import annotations
 
-from PyQt5.QtCore import QStringListModel, Qt, pyqtSignal
-from PyQt5.QtWidgets import QCompleter
+import re
+from dataclasses import dataclass
+from difflib import SequenceMatcher as SM
+from functools import lru_cache
+from typing import List, Optional, Type
+from PyQt5 import QtCore
 
-from app.data.database.database import DB, Database
-from app.data.resources.resources import RESOURCES, Resources
+from PyQt5.QtCore import (QAbstractListModel, QLocale, QModelIndex, QSize, Qt,
+                          pyqtSignal)
+from PyQt5.QtWidgets import (QCompleter, QStyledItemDelegate,
+                             QStyleOptionViewItem)
+from PyQt5.QtGui import QPalette, QColor
+from app import dark_theme
+
+from app.data.database.database import DB
+from app.data.resources.resources import RESOURCES
 from app.editor.settings import MainSettingsController
 from app.events import event_commands, event_validators
-from app.utilities import str_utils
+from app.events.event_structs import ParseMode
 from app.utilities.typing import NID
 
 
+@dataclass
+class CompletionToInsert():
+    text: str                   # text to insert
+    position: int               # location to insert at
+    replace: int                # chars to delete before insertion (e.g. for autocompleting half a word)
+
+@dataclass
+class CompletionEntry():
+    name: str                   # what the completion actually shows
+    match_text: str             # what the completer matches against
+    value: str                  # what the completer inserts
+
+@dataclass
+class CompletionLocation():
+    word_to_complete: str       # word to complete
+    index: int                  # index of the word to complete
+
+COMPLETION_DATA_ROLE = 100
+
+def _fuzzy_match(text: str, completion: CompletionEntry) -> float:
+    start_bonus = 0.5 if completion.match_text.startswith(text) else 0
+    return SM(None, text.lower(), completion.match_text).ratio() + start_bonus
+
 class EventScriptCompleter(QCompleter):
-    insertText = pyqtSignal(str)
+    insertText = pyqtSignal(list)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.settings = MainSettingsController()
         self.setFilterMode(Qt.MatchContains)
-        self.activated.connect(self.changeCompletion)
+        self.activated[QModelIndex].connect(self.do_complete)
+        self.completion_location: Optional[CompletionLocation] = None
 
-    def changeCompletion(self, completion):
-        self.insertText.emit(completion)
+    def do_complete(self, completion_index: QModelIndex):
+        completion = completion_index.data(COMPLETION_DATA_ROLE)
+        self.insertText.emit([CompletionToInsert(completion.value, self.completion_location.index, len(self.completion_location.word_to_complete))])
         self.popup().hide()
 
     def handleKeyPressEvent(self, event) -> bool:
+        # If completer is up, Tab/Enter can auto-complete
         if event.key() == self.settings.get_autocomplete_button(Qt.Key_Tab):
             if self.popup().isVisible() and len(self.popup().selectedIndexes()) > 0:
-                # If completer is up, Tab/Enter can auto-complete
-                completion = self.popup().selectedIndexes()[0].data(Qt.DisplayRole)
-                self.changeCompletion(completion)
+                self.do_complete(self.popup().selectedIndexes()[0])
                 return True # should not enter a tab
         elif event.key() == Qt.Key_Backspace:
-            # autofill functionality, hides autofill windows
-            if self.popup().isVisible():
-                self.popup().hide()
+            self.popup().hide()
         elif event.key() == Qt.Key_Escape:
-            if self.popup().isVisible():
-                self.popup().hide()
+            self.popup().hide()
         return False
 
-    def setTextToComplete(self, line: str, cursor_pos: int, level_nid: NID):
-        # line is of the form, e.g.:
-        # "remove_unit;E" -> User is in the middle of typing "Eirika"
-        def arg_text_under_cursor(text: str, cursor_pos):
-            before_text = text[0:cursor_pos]
-            after_text = text[cursor_pos:]
-            idx = before_text.rfind(';')
-            before_arg = before_text[idx + 1:]
-            idx = after_text.find(';')
-            after_arg = after_text[0:idx]
-            return (before_arg + after_arg)
-        arg_under_cursor = arg_text_under_cursor(line, cursor_pos)
-        # determine what dictionary to use for completion
-        validator, flags = detect_type_under_cursor(line, cursor_pos, arg_under_cursor)
-        autofill_dict = generate_wordlist_from_validator_type(validator, level_nid, arg_under_cursor, DB, RESOURCES)
-        if flags:
-            autofill_dict = autofill_dict + generate_flags_wordlist(flags)
-        if len(autofill_dict) == 0:
-            try:
-                if self.popup().isVisible():
-                    self.popup().hide()
-            except: # popup doesn't exist?
-                pass
-            return False
-        self.setModel(QStringListModel(autofill_dict, self))
-        trimmed_line = line[0:cursor_pos]
-        start_last_arg = max(max([trimmed_line.rfind(c) for c in ';,']), -1)
-        completionPrefix = trimmed_line[start_last_arg + 1:]
-        self.setCompletionPrefix(completionPrefix)
+    def setTextToComplete(self, line: str, end_idx: int, level_nid: NID):
+        completions = generate_completions(line, level_nid)
+        if not completions:
+            self.setModel(self.ESInternalModel([], self))
+            return
+        self.completion_location = get_arg_info(line, end_idx)
+        # sort completions based on similarity
+        completions = sorted(completions, key=lambda compl: _fuzzy_match(self.completion_location.word_to_complete, compl), reverse=True)
+        self.setModel(self.ESInternalModel(completions, self))
+        self.popup().setItemDelegate(self.ESInternalDelegate(self))
+        self.setCompletionPrefix(self.completion_location.word_to_complete)
         self.popup().setCurrentIndex(self.completionModel().index(0, 0))
         return True
 
-def generate_wordlist_from_validator_type(validator: Type[event_validators.Validator], level: NID = None, arg: str = None,
-                                          db: Database = None, resources: Resources = None) -> List[str]:
-    if not validator:
-        return []
-    valid_entries = validator(db, resources).valid_entries(level, arg)
-    autofill_dict = []
-    for entry in valid_entries:
-        if entry[0] is None:
-            # no name, but has nid
-            autofill_dict.append('{}'.format(entry[1]))
-        else:
-            # has name and nid
-            autofill_dict.append('{name} ({nid})'.format(
-                name=entry[0], nid=entry[1]))
-    return autofill_dict
+    class ESInternalDelegate(QStyledItemDelegate):
+        def __init__(self, parent=None) -> None:
+            super().__init__(parent)
+            theme = dark_theme.get_theme()
+            self.syntax_colors = theme.event_syntax_highlighting()
 
+        def displayText(self, value: CompletionEntry, locale: QLocale) -> str:
+            return value.name
 
-def generate_flags_wordlist(flags: List[str] = []) -> List[str]:
-    flaglist = []
-    if len(flags) > 0:
-        # then we can also put flags in this slot
-        for flag in flags:
-            flaglist.append('FLAG({flag})'.format(flag=flag))
-    return flaglist
+        def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
+            completion: CompletionEntry = index.data(COMPLETION_DATA_ROLE)
+            return QSize(len(completion.name) * 8, 20)
 
-def detect_command_under_cursor(line: str) -> Type[event_commands.EventCommand]:
-    return event_commands.determine_command_type(line)
+        def initStyleOption(self, option: QStyleOptionViewItem, index: QModelIndex) -> None:
+            super().initStyleOption(option, index)
+            option.font.setFamily('Consolas')
+            option.font.setBold(True)
+            completion: CompletionEntry = index.data(COMPLETION_DATA_ROLE)
+            if completion.name.startswith('{') and completion.name.endswith('}'):
+                option.palette.setBrush(QPalette.ColorRole.Text, QColor(self.syntax_colors.special_text_color))
+                option.palette.setBrush(QPalette.ColorRole.HighlightedText, QColor(self.syntax_colors.special_text_color))
 
-def detect_type_under_cursor(line: str, cursor_pos: int, arg_under_cursor: str = None) -> Tuple[event_validators.Validator, List[str]]:
-    # turn off typechecking for comments
-    comment_index = line.find("#")
-    if cursor_pos > comment_index and comment_index > 0:
-        return (event_validators.Validator, [])
+    class ESInternalModel(QAbstractListModel):
+        def __init__(self, data: List[CompletionEntry], parent: EventScriptCompleter):
+            super().__init__(parent)
+            self._data = data
 
-    if arg_under_cursor:
-        # see if we're in the middle of a bracket/eval expression
-        # filter out all paired brackets
-        arg_under_cursor = str_utils.remove_all_matched(arg_under_cursor, '{', '}')
-        eval_bracket = arg_under_cursor.rfind('{')
-        eval_colon = arg_under_cursor.rfind(':')
-        eval_end = arg_under_cursor.rfind('}')
-        if eval_colon > eval_bracket and eval_bracket > eval_end:
-            # get eval type
-            eval_tag = arg_under_cursor[eval_bracket+1:eval_colon]
-            return (event_validators.get(eval_tag), [])
+        def rowCount(self, parent=None) -> int:
+            return len(self._data)
 
-    args = [arg.string for arg in event_commands.get_command_arguments(line)]
-    arg_idx = -1
-    while cursor_pos > 0:
-        current_arg = args.pop()
-        cursor_pos -= len(current_arg) + 1
-        arg_idx += 1
-    arg_idx -= 1
-
-    flags = []
-    # -1 is the command itself, and 0, 1, 2, etc. are the args
-    if arg_idx <= -1:
-        return (event_validators.EventFunction, [])
-    try:
-        command_type = detect_command_under_cursor(line)
-        command = command_type()
-        validator_name = None
-        if arg_under_cursor and '=' in arg_under_cursor:
-            arg_name = arg_under_cursor.split('=')[0]
-            if command.get_index_from_keyword(arg_name) != 0:
-                arg_idx = command.get_index_from_keyword(arg_name)
-        if command:
-            if arg_idx >= len(command.keywords):
-                # no longer required keywords, now add optionals and flags
-                flags = command.flags
-                i = arg_idx - len(command.keywords)
-                if i < len(command.optional_keywords):
-                    validator_name = command.get_keyword_types()[arg_idx]
+        def data(self, index: QModelIndex, role: int):
+            if not index.isValid():
+                return None
+            # completer uses this field to match against
+            elif role == Qt.ItemDataRole.EditRole:
+                return self._data[index.row()].match_text
+            # what the completer ultimately returns
+            elif role == COMPLETION_DATA_ROLE:
+                return self._data[index.row()]
+            # delegate uses this to decide what to display
+            elif role == Qt.ItemDataRole.DisplayRole:
+                return self._data[index.row()]
             else:
-                validator_name = command.get_keyword_types()[arg_idx]
-        if validator_name:
-            validator = event_validators.get(validator_name)
+                return None
+
+def generate_completions(line: str, level_nid: NID) -> List[CompletionEntry]:
+    as_tokens = event_commands.parse_event_line(line)
+    arg = as_tokens.tokens[-1]
+
+    def create_completion(nid, name):
+        nid_or_name = nid
+        if name and nid != name:
+            nid_or_name = "%s (%s)" % (name, nid)
+        return CompletionEntry(nid_or_name, nid_or_name, nid)
+
+    if as_tokens.mode() == ParseMode.COMMAND:
+        commands = event_validators.EventFunction().valid_entries()
+        completions = [create_completion(nid, name) for name, nid in commands]
+        return completions
+
+    command_t = event_commands.ALL_EVENT_COMMANDS.get(as_tokens.command(), None)
+    if not command_t:
+        return []
+
+    completions = []
+    if as_tokens.mode() == ParseMode.ARGS:
+        arg_name = get_arg_name(command_t, arg, len(as_tokens.tokens) - 2)
+        arg_validator = event_validators.get(command_t.get_validator_from_keyword(arg_name))
+        if arg_validator:
+            valids = arg_validator(DB, RESOURCES).valid_entries(level_nid, arg)
+            completions = [create_completion(nid, name) for name, nid in valids]
+        flag_cmpls = []
+        if arg_name in command_t.optional_keywords:
+            # add flags when we're done with required
+            flags = command_t().flags
+            flag_key = "FLAG(%s)"
+            flag_cmpls = [CompletionEntry(flag_key % flag, flag, flag) for flag in flags]
+        return completions + flag_cmpls
+
+    elif as_tokens.mode() == ParseMode.FLAGS:
+        flags = command_t().flags
+        flag_key = "FLAG(%s)"
+        completions = [CompletionEntry(flag_key % flag, flag, flag) for flag in flags]
+        return completions
+    return []
+
+def get_arg_info(line: str, end_idx: int) -> CompletionLocation:
+    """Returns the arg at the end of line, as well as its starting index in the document"""
+    as_tokens = event_commands.parse_event_line(line)
+    full_arg = as_tokens.tokens[-1]
+    arg = trim_arg_text(full_arg)
+    return CompletionLocation(arg, end_idx - len(arg))
+
+def get_arg_name(command_t: Type[event_commands.EventCommand], arg_text: str, arg_idx: int) -> Optional[str]:
+    # is this a keyword arg?
+    if '=' in arg_text:
+        maybe_keyword, _ = arg_text.split('=', 1)
+        if command_t.get_validator_from_keyword(maybe_keyword):
+            return maybe_keyword
+
+    # not a keyword arg
+    if not arg_idx < len(command_t.get_keywords()):
+        return None
+    return command_t.get_keywords()[arg_idx]
+
+def trim_arg_text(arg_text: str) -> str:
+    return re.split('[^a-zA-Z0-9_"\'\{]', arg_text)[-1]
+
+class EventScriptFunctionHinter():
+    @staticmethod
+    @lru_cache(16)
+    def _generate_hint_for_command(command: Type[event_commands.EventCommand], param: str) -> str:
+        command = command()
+        args = []
+        args.append(command.nid)
+        curr_keyword = None
+        for idx, keyword in enumerate(command.get_keywords()):
+            if command.keyword_types:
+                keyword_type = command.keyword_types[idx]
+                hint_str = "%s=%s" % (keyword, keyword_type)
+                if keyword == param:
+                    hint_str = "<b>%s</b>" % hint_str
+                    curr_keyword = keyword_type
+                args.append(hint_str)
+            else:
+                hint_str = keyword
+                if keyword == param:
+                    hint_str = "<b>%s</b>" % hint_str
+                    curr_keyword = keyword
+                args.append(hint_str)
+        if command.flags:
+            hint_str = 'FLAGS'
+            if param == 'FLAGS':
+                hint_str = "<b>%s</b>" % hint_str
+                curr_keyword = 'FLAGS'
+            args.append(hint_str)
+        hint_cmd_str = ';\u200b'.join(args)
+        hint_cmd_str = '<div class="command_text">' + hint_cmd_str + '</div>'
+
+        hint_desc = ''
+        if curr_keyword == 'FLAGS':
+            hint_desc = 'Must be one of: %s' % ', '.join(command.flags)
         else:
-            validator = event_validators.Validator
-        return (validator, flags)
-    except Exception as e:
-        print(e)
-        import traceback
-        traceback.print_exc()
-        return (event_validators.Validator, [])
+            validator = event_validators.get(curr_keyword)
+            if validator:
+                hint_desc = '<div class="desc_text">' + validator().desc + '</div>'
+
+        settings = MainSettingsController()
+        style = """
+            <style>
+                .command_text {font-family: '%s', %s, monospace;}
+                .desc_text {font-family: Arial, Helvetica, sans-serif;}
+            </style>
+        """ % (settings.get_code_font(), settings.get_code_font())
+
+        hint_text = style + hint_cmd_str + '<hr>' + hint_desc
+        return hint_text
+
+    @staticmethod
+    def generate_hint_for_line(line: str):
+        if not line:
+            return None
+        as_tokens = event_commands.parse_event_line(line)
+        if as_tokens.mode() in (ParseMode.COMMAND, ParseMode.EOL):
+            return None
+
+        arg = as_tokens.tokens[-1]
+        command = as_tokens.command()
+        command_t = event_commands.ALL_EVENT_COMMANDS.get(command, None)
+        if not command_t:
+            return None
+        if as_tokens.mode() == ParseMode.FLAGS:
+            return EventScriptFunctionHinter._generate_hint_for_command(command_t, 'FLAGS')
+        else:
+            param = get_arg_name(command_t, arg, len(as_tokens.tokens) - 2)
+            return EventScriptFunctionHinter._generate_hint_for_command(command_t, param or 'FLAGS')

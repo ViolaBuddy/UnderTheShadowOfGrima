@@ -90,16 +90,6 @@ class TextEvaluator():
                 evaluated.append(self._object_to_str(local_args[to_eval]))
             elif to_eval in self.local_args:
                 evaluated.append(self._object_to_str(self.local_args[to_eval]))
-            elif to_eval == 'unit':
-                if self.unit:
-                    evaluated.append(self.unit.nid)
-                else:
-                    evaluated.append("??")
-            elif to_eval == 'unit2':
-                if self.unit2:
-                    evaluated.append(self.unit2.nid)
-                else:
-                    evaluated.append("??")
             else:
                 evaluated.append('{%s}' % to_eval)
         for idx in range(len(to_evaluate)):
@@ -261,7 +251,7 @@ class TextEvaluator():
             text = text.replace(to_evaluate[idx], evaluated[idx])
         return text
 
-    def _evaluate_evals(self, text) -> str:
+    def _evaluate_evals(self, text: str) -> str:
         # Set up variables so evals work well
         to_evaluate = re.findall(r'\{e:[^{}]*\}', text) + re.findall(r'\{eval:[^{}]*\}', text)
         evaluated = []

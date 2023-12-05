@@ -1,3 +1,6 @@
+from typing import List
+from app.events.event_commands import EventCommand
+from app.events.event_prefab import EventPrefab
 from app.events.triggers import EventTrigger
 from app.data.database.database import DB
 from app.events.event import Event
@@ -39,12 +42,15 @@ class EventManager():
         triggered_events = self.get_triggered_events(trigger, level_nid)
         return len(triggered_events) > 0
 
-    def trigger(self, trigger: EventTrigger, level_nid=None):
+    def trigger(self, trigger: EventTrigger, level_nid=None) -> bool:
+        """
+        Returns whether an event was triggered!
+        """
         triggered_events = self.get_triggered_events(trigger, level_nid)
         new_event = False
         sorted_events = sorted(triggered_events, key=lambda x: x.priority)
         for event_prefab in sorted_events:
-            self._add_event(event_prefab.nid, event_prefab.commands, trigger)
+            self._add_event(event_prefab, trigger)
             new_event = True
             if event_prefab.only_once:
                 action.do(action.OnlyOnceEvent(event_prefab.nid))
@@ -58,13 +64,18 @@ class EventManager():
             if event_prefab.nid in game.already_triggered_events:
                 return False
 
-        self._add_event(event_prefab.nid, event_prefab.commands, triggers.GenericTrigger(unit, unit2, position, local_args))
+        self._add_event(event_prefab, triggers.GenericTrigger(unit, unit2, position, local_args))
         if event_prefab.only_once:
             action.do(action.OnlyOnceEvent(event_prefab.nid))
         return True
 
-    def _add_event(self, nid, commands, trigger: EventTrigger):
-        event = Event(nid, commands, trigger)
+    def _add_event_from_script(self, nid, script: str, trigger: EventTrigger):
+        dummy_prefab = EventPrefab(nid)
+        dummy_prefab.source = script
+        self._add_event(dummy_prefab, trigger)
+
+    def _add_event(self, event_prefab, trigger: EventTrigger):
+        event = Event(event_prefab, trigger)
         self.all_events.append(event)
         self.event_stack.append(event)
         game.state.change('event')
