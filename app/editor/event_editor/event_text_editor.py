@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import math
 import os
+from typing import TYPE_CHECKING, List, Optional, Tuple, Type
 
-from PyQt5.QtCore import QRect, QSize, Qt, pyqtSignal
+from PyQt5.QtCore import QRect, QSize, Qt, pyqtSignal, QMimeData
 from PyQt5.QtGui import QFontMetrics, QPainter, QPalette, QTextCursor
-from PyQt5.QtWidgets import QCompleter, QLabel, QPlainTextEdit, QWidget
+from PyQt5.QtWidgets import QCompleter, QLabel, QPlainTextEdit, QWidget, QAction
 
 from app import dark_theme
-from app.editor.event_editor import event_autocompleter
+from app.editor.event_editor import event_autocompleter, event_formatter
 from app.editor.settings import MainSettingsController
-from app.events import event_commands, event_validators
-from app.extensions.markdown2 import Markdown
+from app.events.event_prefab import EventVersion
+from app.utilities import str_utils
 
+if TYPE_CHECKING:
+    from app.editor.event_editor.event_properties import EventProperties
 
 class LineNumberArea(QWidget):
     def __init__(self, parent: EventTextEditor):
@@ -30,11 +33,13 @@ class EventTextEditor(QPlainTextEdit):
 
     def mouseReleaseEvent(self, event):
         self.clicked.emit()
+        if self.document().characterAt(self.textCursor().position() - 1) in '; ':
+            self.disable_hinter = False
         return super().mouseReleaseEvent(event)
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.window = parent
+        self.event_properties: EventProperties = parent
         self.line_number_area = LineNumberArea(self)
 
         self.settings = MainSettingsController()
@@ -50,141 +55,72 @@ class EventTextEditor(QPlainTextEdit):
         fm = QFontMetrics(self.font())
         self.setTabStopWidth(4 * fm.width(' '))
 
-        self.completer: QCompleter = None
-        self.function_annotator: QLabel = QLabel(self)
-        self.markdown_converter: Markdown = Markdown()
+        self.completer: Optional[QCompleter] = None
+        self.function_hinter: Optional[Type[event_autocompleter.EventScriptFunctionHinter]] = None
+        # completer
+        self.textChanged.connect(self.complete)
+        self.prev_keyboard_press = None
 
-        if not bool(self.settings.get_event_autocomplete()):
-            return  # Event auto completer is turned off
-        else:
-            # completer
-            self.setCompleter(event_autocompleter.EventScriptCompleter(parent=self))
-            self.textChanged.connect(self.complete)
+        self.disable_hinter = False
+
+        self.format_action = QAction("Format...", self, shortcut="Ctrl+Alt+F", triggered=self.autoformat)
+        self.addAction(self.format_action)
+
+        self.function_annotator: QLabel = QLabel(self)
+        if bool(self.settings.get_event_autocomplete()):
+            # function helper
             self.textChanged.connect(self.display_function_hint)
             self.clicked.connect(self.display_function_hint)
             self.cursorPositionChanged.connect(self.display_function_hint)
-            self.prev_keyboard_press = None
-
-            # function helper
             self.function_annotator.setTextFormat(Qt.RichText)
             self.function_annotator.setWordWrap(True)
             with open(os.path.join(os.path.dirname(__file__),'event_styles.css'), 'r') as stylecss:
                 self.function_annotator.setStyleSheet(stylecss.read())
 
-    def setCompleter(self, completer):
-        if not completer:
+    def autoformat(self):
+        if self.event_properties.version == EventVersion.EVENT:
+            text = self.document().toRawText()
+            text = str_utils.convert_raw_text_newlines(text)
+            formatted = event_formatter.format_event_script(text)
+            self.document().setPlainText(formatted)
+        else:
+            pass
+
+    def set_completer(self, completer_t: Type[QCompleter]):
+        if not completer_t:
+            self.completer = None
             return
-        completer.setWidget(self)
-        completer.setCompletionMode(QCompleter.PopupCompletion)
-        completer.setCaseSensitivity(Qt.CaseInsensitive)
-        self.completer = completer
-        self.completer.insertText.connect(self.insertCompletion)
+        self.completer = completer_t(self)
+        self.completer.setWidget(self)
+        self.completer.setCompletionMode(QCompleter.PopupCompletion)
+        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.completer.insertText.connect(self.insert_completions)
 
-    def insertCompletion(self, completion):
-        tc = self.textCursor()
-        while not tc.atBlockEnd():
-            tc.movePosition(QTextCursor.NextCharacter, QTextCursor.KeepAnchor)
-            if tc.selectedText() in ";,":
-                break
-            tc.clearSelection()
-        end = tc.position()
-        while not tc.atBlockStart():
-            tc.movePosition(QTextCursor.PreviousCharacter, QTextCursor.KeepAnchor)
-            if tc.selectedText() in ';,':
-                break
-            tc.clearSelection()
-        start = tc.position()
-        for i in range(start, end):
-            tc.movePosition(QTextCursor.NextCharacter, QTextCursor.KeepAnchor)
-        tc.removeSelectedText()
-        tc.insertText(completion)
-        self.setTextCursor(tc)
+    def set_function_hinter(self, function_hinter: Type[event_autocompleter.EventScriptFunctionHinter]):
+        self.function_hinter = function_hinter
 
-    def textUnderCursor(self):
-        tc = self.textCursor()
-        tc.select(QTextCursor.WordUnderCursor)
-        return tc.selectedText()
+    def insert_completions(self, completions: List[event_autocompleter.CompletionToInsert]):
+        for completion in completions:
+            tc = self.textCursor()
+            tc.setPosition(completion.position)
+            tc.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, completion.replace)
+            tc.removeSelectedText()
+            tc.insertText(completion.text)
 
     def display_function_hint(self):
-        if not bool(self.settings.get_event_autocomplete()):
-            return  # Event auto completer is turned off
+        if not self.should_show_function_hint():
+            self.hide_function_hint()
+            return
         tc = self.textCursor()
-        line = tc.block().text()
-        cursor_pos = tc.positionInBlock()
-        if len(line) != cursor_pos and line[cursor_pos - 1] != ';':
-            self.function_annotator.hide()
-            return  # Only do function hint on end of line or when clicking at the beginning of a field
-        if tc.blockNumber() <= 0 and cursor_pos <= 0:  # don't do hint if cursor is at the very top left of event
-            self.function_annotator.hide()
+        line = self.get_command_text_before_cursor()
+        hint_text = self.function_hinter.generate_hint_for_line(line)
+        if not hint_text:
+            self.hide_function_hint()
             return
-        if self.prev_keyboard_press == Qt.Key_Return: # don't do hint on newline
-            self.function_annotator.hide()
-            return
-
-        if len(line) > 0 and line[cursor_pos - 1] == ';':
-            self.function_annotator.show()
-
-        # determine which command and validator is under the cursor
-        command = event_autocompleter.detect_command_under_cursor(line)
-        validator, flags = event_autocompleter.detect_type_under_cursor(line, cursor_pos, None)
-
-        if not command or command == event_commands.Comment:
-            return
-
-        hint_words = []
-        hint_words.append(command.nid)
-        all_keywords = command.keywords + command.optional_keywords
-        for idx, keyword in enumerate(all_keywords):
-            if command.keyword_types:
-                keyword_type = command.keyword_types[idx]
-                hint_str = "%s=%s" % (keyword, keyword_type)
-                if validator and event_validators.get(keyword_type) == validator:
-                    hint_str = "<b>%s</b>" % hint_str
-                hint_words.append(hint_str)
-            else:
-                hint_str = keyword
-                if validator and event_validators.get(keyword) == validator:
-                    hint_str = "<b>%s</b>" % hint_str
-                hint_words.append(hint_str)
-        if command.flags:
-            hint_words.append('FLAGS')
-        hint_cmd = ""
-        hint_desc = ""
-
-        if validator == event_validators.EventFunction:
-            self.function_annotator.hide()
-            return
-        else:
-            try:
-                arg_idx = line.count(';', 0, cursor_pos)
-                if arg_idx != len(hint_words) - 1:
-                    hint_desc = validator.__name__ + ' ' + str(validator().desc)
-                elif cursor_pos > 0 and command.flags:
-                    hint_desc = 'Must be one of (`' + str.join('`,`', flags) + '`)'
-            except:
-                if cursor_pos > 0 and command.flags:
-                    hint_words[-1] = '<b>' + hint_words[-1] + '</b>'
-                    hint_desc = 'Must be one of (`' + str.join('`,`', flags) + '`)'
-
-        hint_cmd = str.join(';\u200b', hint_words)
-        # style both components
-        hint_cmd = '<div class="command_text">' + hint_cmd + '</div>'
-        hint_desc = '<div class="desc_text">' + hint_desc + '</div>'
-        hint_command_desc = '<div class="desc_text">' + self.markdown_converter.convert('\n'.join(command.desc.split('\n')[:3])) + '</div>'
-
-        style = """
-            <style>
-                .command_text {font-family: 'Courier New', Courier, monospace;}
-                .desc_text {font-family: Arial, Helvetica, sans-serif;}
-            </style>
-        """
-
-        hint_text = style + hint_cmd + '<hr>' + hint_desc
-        if self.settings.get_event_autocomplete_desc():
-            hint_text += '<hr>' + hint_command_desc
-        self.function_annotator.setText(hint_text)
-        self.function_annotator.setWordWrap(True)
-        self.function_annotator.adjustSize()
+        if self.function_annotator.text() != hint_text:
+            self.function_annotator.setText(hint_text)
+            self.function_annotator.setWordWrap(True)
+            self.function_annotator.adjustSize()
 
         # offset the position and display
         tc_top_right = self.mapTo(self.parent(), self.cursorRect(tc).topRight())
@@ -192,7 +128,7 @@ class EventTextEditor(QPlainTextEdit):
 
         top, left = tc_top_right.y() - height - 5, min(tc_top_right.x() + 15, self.width() - self.function_annotator.width())
         if top < 0:
-            if self.completer.popup().isVisible():
+            if self.completer and self.completer.popup().isVisible():
                 top = tc_top_right.y() + self.completer.popup().height() + 6
                 left = min(tc_top_right.x(), self.width() - self.function_annotator.width())
             else:
@@ -200,26 +136,26 @@ class EventTextEditor(QPlainTextEdit):
         tc_top_right.setY(top)
         tc_top_right.setX(left)
         self.function_annotator.move(tc_top_right)
+        self.function_annotator.show()
+
+    def get_command_text_before_cursor(self) -> str:
+        if self.event_properties.version == EventVersion.EVENT:
+            return self.textCursor().block().text()[:self.textCursor().positionInBlock()]
+        elif self.event_properties.version == EventVersion.PYEV1:
+            curr_pos = self.textCursor().position()
+            terminal_pos = curr_pos
+            while terminal_pos > 0 and self.document().characterAt(terminal_pos) not in '$\n':
+                terminal_pos -= 1
+            return self.document().toRawText()[terminal_pos:curr_pos]
+        else:
+            return None
 
     def complete(self):
-        if not self.completer or not bool(self.settings.get_event_autocomplete()):
-            return  # Event auto completer is turned off
-        tc = self.textCursor()
-        line = tc.block().text()
-        cursor_pos = tc.positionInBlock()
-        if len(line) != cursor_pos:
-            return  # Only do autocomplete on end of line
-        if tc.blockNumber() <= 0 and cursor_pos <= 0:  # Remove if cursor is at the very top left of event
+        if not self.should_show_completion_box():
+            self.hide_completion_box()
             return
-        if self.prev_keyboard_press in (Qt.Key_Backspace, Qt.Key_Return, Qt.Key_Tab): # don't do autocomplete on backspace
-            try:
-                if self.completer.popup().isVisible():
-                    self.completer.popup().hide()
-            except: # popup doesn't exist?
-                pass
-            return
-
-        if not self.completer.setTextToComplete(line, cursor_pos, self.window.current.level_nid):
+        line = self.get_command_text_before_cursor()
+        if not self.completer.setTextToComplete(line, self.textCursor().position(), self.event_properties.current.level_nid):
             return
         cr = self.cursorRect()
         cr.setWidth(
@@ -252,7 +188,7 @@ class EventTextEditor(QPlainTextEdit):
 
     def lineNumberAreaWidth(self) -> int:
         num_blocks = max(1, self.blockCount())
-        digits = math.ceil(math.log(num_blocks, 10))
+        digits = int(math.log10(num_blocks)) + 1
         space = 3 + self.fontMetrics().horizontalAdvance("9") * digits
 
         return space
@@ -274,6 +210,69 @@ class EventTextEditor(QPlainTextEdit):
         if rect.contains(self.viewport().rect()):
             self.updateLineNumberAreaWidth(0)
 
+    def createMimeDataFromSelection(self):
+        mimedata = QMimeData()
+        raw_text_under_selection = self.textCursor().selectedText()
+        mimedata.setProperty('raw_text', raw_text_under_selection)
+        mimedata.setText(str_utils.convert_raw_text_newlines(raw_text_under_selection))
+        return mimedata
+
+    def insertFromMimeData(self, source: QMimeData):
+        text = source.text()
+        if source.property('raw_text'):
+            text = source.property('raw_text')
+        source.setText(text)
+        super().insertFromMimeData(source)
+
+    def should_show_completion_box(self):
+        if not self.completer or not bool(self.settings.get_event_autocomplete()):
+            return False
+        if not self.document().toPlainText():
+            return False
+        if self.prev_keyboard_press in (Qt.Key_Backspace, Qt.Key_Return, Qt.Key_Tab): # don't do autocomplete on backspace
+            return False
+        tc = self.textCursor()
+        line = tc.block().text()
+        cursor_pos = tc.positionInBlock()
+        if len(line) != cursor_pos: # Only do autocomplete on end of line
+            return False
+        if tc.blockNumber() <= 0 and cursor_pos <= 0:
+            return False
+        return True
+
+    def hide_completion_box(self):
+        try:
+            if self.completer and self.completer.popup().isVisible():
+                self.completer.popup().hide()
+        except:
+            pass
+
+    def should_show_function_hint(self):
+        if not bool(self.settings.get_event_autocomplete()):
+            return False
+        if not self.function_hinter:
+            return False
+        if not self.document().toPlainText():
+            return False
+        if self.prev_keyboard_press == Qt.Key_Return: # don't do hint on newline
+            return False
+        if self.disable_hinter:
+            return False
+        tc = self.textCursor()
+        cursor_pos = tc.positionInBlock()
+        if tc.blockNumber() <= 0 and cursor_pos <= 0:
+            return False
+        return True
+
+    def hide_function_hint(self):
+        if self.function_annotator.isVisible():
+            self.function_annotator.hide()
+
+    def disable_helpers(self):
+        self.hide_function_hint()
+        self.hide_completion_box()
+        self.disable_hinter = True
+
     def keyPressEvent(self, event):
         self.prev_keyboard_press = event.key()
         # Shift + Tab is not the same as catching a shift modifier + tab key
@@ -284,16 +283,23 @@ class EventTextEditor(QPlainTextEdit):
                 return
         # autocomplete didn't handle the event, or doesn't consume it
         # let the textbox handle
-        if event.key() == Qt.Key_Tab:
+        if event.key() in (Qt.Key.Key_Semicolon, Qt.Key.Key_Space):
+            self.disable_hinter = False
+            return super().keyPressEvent(event)
+        elif event.key() == Qt.Key_Tab:
             cur = self.textCursor()
             cur.insertText("    ")
         elif event.key() == Qt.Key_Backspace:
             # autofill functionality, hides autofill windows
-            if self.function_annotator.isVisible():
-                self.function_annotator.hide()
+            self.disable_helpers()
             return super().keyPressEvent(event)
         elif event.key() == Qt.Key_Return:
-            return super().keyPressEvent(event)
+            self.hide_function_hint()
+            self.hide_completion_box()
+            self.disable_hinter = False
+            super().keyPressEvent(event)
+        elif event.key() == Qt.Key.Key_Escape:
+            self.disable_helpers()
         elif event.key() == Qt.Key_Backtab:
             cur = self.textCursor()
             # Copy the current selection
@@ -332,9 +338,5 @@ class EventTextEditor(QPlainTextEdit):
                     # It's not a tab, so reset the selection to what it was
                     cur.setPosition(anchor)
                     cur.setPosition(pos, QTextCursor.KeepAnchor)
-        elif event.key() == Qt.Key_Escape:
-            # autofill functionality, hides autofill windows
-            if self.function_annotator.isVisible():
-                self.function_annotator.hide()
         else:
             return super().keyPressEvent(event)

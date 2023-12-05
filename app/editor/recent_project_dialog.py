@@ -82,9 +82,9 @@ class RecentProjectDialog(SimpleDialog):
         self.open_other_button = QPushButton("Open other...", self)
         self.open_other_button.clicked.connect(self.on_click_open)
         button_layout.addWidget(self.open_other_button)
-        self.new_button = QPushButton("Create New...", self)
-        self.new_button.clicked.connect(self.on_click_new)
         if not load_only:
+            self.new_button = QPushButton("Create New...", self)
+            self.new_button.clicked.connect(self.on_click_new)
             button_layout.addWidget(self.new_button)
 
         layout.addWidget(self.project_table)
@@ -139,17 +139,19 @@ class RecentProjectDialog(SimpleDialog):
         return self._selected_path
 
 
-def choose_recent_project(load_only=False) -> Optional[str]:
+def choose_recent_project(load_only: bool = False, allow_auto_open: bool = False) -> Optional[str]:
     """
     # str means go open that project at that path
     # None means don't do anything (When you press X or close on the dialog)
     """
     settings = MainSettingsController()
     recent_projects = settings.get_last_ten_projects()
-    if not recent_projects or settings.get_auto_open():
-        return settings.get_current_project("default.ltproj")
-    dialog = RecentProjectDialog(
-        settings.get_last_ten_projects(), load_only)
+    if not recent_projects:
+        # default.ltproj is always an available choice
+        recent_projects = [ProjectHistoryEntry("default.ltproj", "default.ltproj")]
+    if allow_auto_open and settings.get_auto_open():
+        return settings.get_current_project(fallback="default.ltproj")
+    dialog = RecentProjectDialog(recent_projects, load_only)
     dialog.exec_()
     selected_path: Optional[str] = \
         dialog.get_selected()

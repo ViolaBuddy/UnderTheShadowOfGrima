@@ -7,7 +7,7 @@ from app.engine import engine
 from app.engine import config as cf
 from app.engine import driver
 from app.engine import game_state
-from app.engine.component_system import source_generator
+from app.engine.codegen import source_generator
 
 def main(name: str = 'testing_proj'):
     # Translation currently unused within engine proper
@@ -30,7 +30,7 @@ def test_play(name: str = 'testing_proj'):
     DB.load(name + '.ltproj')
     title = DB.constants.value('title')
     driver.start(title, from_editor=True)
-    if 'DEBUG' in DB.levels:
+    if 'DEBUG' in DB.levels.keys():
         game = game_state.start_level('DEBUG')
     else:
         first_level_nid = DB.levels[0].nid
@@ -62,12 +62,11 @@ if __name__ == '__main__':
 
     # compile necessary files
     if not hasattr(sys, 'frozen'):
-        source_generator.generate_component_system_source()
+        source_generator.generate_all()
 
     try:
         find_and_run_project()
         # main('lion_throne')
-        # test_play('lion_throne')
         # test_play('sacred_stones')
     except Exception as e:
         logging.exception(e)
