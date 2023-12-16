@@ -1,0 +1,50 @@
+[
+    {
+        "nid": "Smite",
+        "name": "Smite",
+        "desc": "Pushes target unit 2 spaces away",
+        "icon_nid": "Skills",
+        "icon_index": [
+            3,
+            9
+        ],
+        "components": [
+            [
+                "min_range",
+                1
+            ],
+            [
+                "max_range",
+                1
+            ],
+            [
+                "exp",
+                11
+            ],
+            [
+                "shove",
+                2
+            ],
+            [
+                "weapon",
+                null
+            ],
+            [
+                "target_enemy",
+                null
+            ],
+            [
+                "weapon_type",
+                "Light"
+            ],
+            [
+                "status_on_hit",
+                "Nothing"
+            ],
+            [
+                "no_double",
+                null
+            ]
+        ]
+    }
+]

@@ -31,8 +31,8 @@
             },
             {
                 "nid": "Ka",
-                "team": "player",
-                "ai": "None",
+                "team": "other",
+                "ai": "MoveToIsis",
                 "roam_ai": null,
                 "ai_group": "",
                 "starting_position": [
@@ -45,7 +45,7 @@
             {
                 "nid": "Ba",
                 "team": "other",
-                "ai": "None",
+                "ai": "MoveToIsis",
                 "roam_ai": null,
                 "ai_group": "",
                 "starting_position": [
@@ -150,7 +150,7 @@
                 "faction": "Soldier",
                 "starting_items": [
                     [
-                        "Shove",
+                        "Smite",
                         false
                     ]
                 ],
@@ -204,6 +204,11 @@
             }
         ],
         "unit_groups": [],
-        "ai_groups": []
+        "ai_groups": [
+            {
+                "nid": "",
+                "trigger_threshold": 1
+            }
+        ]
     }
 ]

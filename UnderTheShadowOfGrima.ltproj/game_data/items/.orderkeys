@@ -48,7 +48,6 @@
     "Halberd",
     "Hammer",
     "Dragon_Axe",
-    "Devil_Axe",
     "Swordreaver",
     "Swordslayer",
     "Brave_Axe",
@@ -86,7 +85,6 @@
     "Warp",
     "Warp1",
     "Warp2",
-    "Latona",
     "Lightning",
     "Shine",
     "Divine",
@@ -102,7 +100,6 @@
     "Flux",
     "Luna",
     "Nosferatu",
-    "Eclipse",
     "Fenrir",
     "Gleipnir",
     "Naglfar",
@@ -160,5 +157,5 @@
     "Summon_Soldier",
     "Sear",
     "Evil_Eye",
-    "Shove"
+    "Smite"
 ]
