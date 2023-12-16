@@ -61,7 +61,7 @@
     ],
     [
         "overworld",
-        true
+        false
     ],
     [
         "overworld_start",
@@ -181,7 +181,7 @@
     ],
     [
         "roam_hide_hp",
-        false
+        true
     ],
     [
         "autogenerate_grey_map_sprites",
@@ -249,7 +249,7 @@
     ],
     [
         "title",
-        "Lex Talionis Game"
+        "Under the Shadow of Grima"
     ],
     [
         "title_particles",
@@ -281,7 +281,7 @@
     ],
     [
         "restart_battle_music",
-        true
+        false
     ],
     [
         "kill_wexp",

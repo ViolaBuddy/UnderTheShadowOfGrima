@@ -4,24 +4,12 @@
         "trigger": "level_start",
         "level_nid": "0",
         "condition": "True",
-        "commands": [
-            [
-                "add_talk",
-                [
-                    "Isis (Isis)",
-                    "Ba (Ba)"
-                ]
-            ],
-            [
-                "add_talk",
-                [
-                    "Isis (Isis)",
-                    "Ka (Ka)"
-                ]
-            ]
-        ],
+        "commands": [],
         "only_once": false,
         "priority": 20,
-        "source": "add_talk;Isis (Isis);Ba (Ba)\nadd_talk;Isis (Isis);Ka (Ka)\n"
+        "_source": [
+            "add_talk;Isis;Ba",
+            "add_talk;Isis;Ka"
+        ]
     }
 ]
