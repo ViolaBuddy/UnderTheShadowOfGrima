@@ -1,0 +1,24 @@
+[
+    {
+        "name": "DeathBaKa",
+        "trigger": "unit_death",
+        "level_nid": "0",
+        "condition": "unit.nid == 'Ba' or unit.nid == 'Ka' ",
+        "commands": [],
+        "only_once": false,
+        "priority": 20,
+        "_source": [
+            "add_portrait;Ka;FarRight",
+            "expression;Ka;CloseEyes",
+            "speak;Ka;...",
+            "add_portrait;Isis;FarLeft",
+            "speak;Isis;No!",
+            "move_portrait;Isis;CenterRight",
+            "speak;Isis;...|Alas, Queen Malika, I could not protect your soul.|I'm so sorry.",
+            "remove_portrait;Ka;no_block",
+            "remove_portrait;Isis",
+            "remove_unit;Ka",
+            "lose_game"
+        ]
+    }
+]

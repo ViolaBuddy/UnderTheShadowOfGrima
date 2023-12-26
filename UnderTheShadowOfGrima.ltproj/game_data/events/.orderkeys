@@ -1,5 +1,6 @@
 [
     "global_DeathEirika",
+    "0_DeathBaKa",
     "global_DeathSeth",
     "global_DeathJoshua",
     "global_DeathColm",
@@ -105,5 +106,6 @@
     "0_Level0_Start_Logic",
     "0_Recruit_Ba",
     "0_Recruit_Ka",
-    "0_Level0_Teleport1"
+    "0_Level0_Teleport1",
+    "0_Level0_Time_Limit"
 ]
