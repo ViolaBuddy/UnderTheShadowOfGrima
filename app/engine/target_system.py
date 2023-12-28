@@ -141,7 +141,7 @@ class TargetSystem():
         # Handle main target position first
         if main_target_pos:
             main_target_pos = main_target_pos if self.game.board.check_fog_of_war(unit, main_target_pos) else None
-        splash_positions = [splash_pos for splash_pos in splash_positions if self.game.board.check_fog_of_war(unit, splash_pos)]
+        splash_positions = [splash_pos for splash_pos in splash_positions if splash_pos and self.game.board.check_fog_of_war(unit, splash_pos)]
         return main_target_pos, splash_positions
 
     def get_attackable_positions(self, unit: UnitObject, item: Optional[ItemObject] = None, force: bool = False) -> Set[Pos]:
@@ -347,10 +347,14 @@ class TargetSystem():
 
         valid_targets = set()
         for position in all_targets:
-            splash = item_system.splash(unit, item, position)
+            main_target_pos, splash_positions = item_system.splash(unit, item, position)
             if self.apply_fog_of_war(unit, item):
-                splash = self._filter_splash_through_fog_of_war(unit, *splash)
-            if item_system.target_restrict(unit, item, *splash):
+                main_target_pos, splash_positions = \
+                    self._filter_splash_through_fog_of_war(unit, main_target_pos, splash_positions)
+            # If there are no valid targets at all, then this cannot be a valid position to target
+            if not main_target_pos and not splash_positions:
+                continue
+            if item_system.target_restrict(unit, item, main_target_pos, splash_positions):
                 valid_targets.add(position)
 
         # Make sure we have enough targets to satisfy the item
