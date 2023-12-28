@@ -3,7 +3,7 @@
         "name": "Level0 Time Limit",
         "trigger": "enemy_turn_change",
         "level_nid": "0",
-        "condition": "game.turncount == 5",
+        "condition": "game.turncount == v('TimeLimit')",
         "commands": [],
         "only_once": false,
         "priority": 20,

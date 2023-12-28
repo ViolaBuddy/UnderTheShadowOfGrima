@@ -7,7 +7,7 @@
         "party": "Eirika",
         "music": {},
         "objective": {
-            "simple": "Ba and Ka reach gate ({e:game.turncount}/5)",
+            "simple": "Ba and Ka reach gate ({e:game.turncount}/{e:v('TimeLimit')})",
             "win": "Ba and Ka reach gate",
             "loss": "Isis, Ba, or Ka is defeated"
         },
@@ -37,7 +37,7 @@
                 "ai_group": "",
                 "starting_position": [
                     8,
-                    20
+                    21
                 ],
                 "starting_traveler": null,
                 "generic": false
@@ -56,77 +56,86 @@
                 "generic": false
             },
             {
-                "nid": "101",
-                "variant": null,
-                "level": 1,
-                "klass": "Mogall",
-                "faction": "Soldier",
-                "starting_items": [
-                    [
-                        "Evil Eye",
-                        false
-                    ]
-                ],
-                "starting_skills": [],
-                "team": "enemy",
-                "ai": "None",
-                "roam_ai": null,
-                "ai_group": "",
-                "starting_position": null,
-                "starting_traveler": null,
-                "generic": true
-            },
-            {
-                "nid": "102",
-                "variant": null,
-                "level": 1,
-                "klass": "Mogall",
-                "faction": "Soldier",
-                "starting_items": [
-                    [
-                        "Evil Eye",
-                        false
-                    ]
-                ],
-                "starting_skills": [],
-                "team": "enemy",
-                "ai": "None",
-                "roam_ai": null,
-                "ai_group": "",
-                "starting_position": null,
-                "starting_traveler": null,
-                "generic": true
-            },
-            {
-                "nid": "103",
-                "variant": null,
-                "level": 1,
-                "klass": "Mogall",
-                "faction": "Soldier",
-                "starting_items": [
-                    [
-                        "Evil Eye",
-                        false
-                    ]
-                ],
-                "starting_skills": [],
-                "team": "enemy",
-                "ai": "None",
-                "roam_ai": null,
-                "ai_group": "",
-                "starting_position": null,
-                "starting_traveler": null,
-                "generic": true
-            },
-            {
                 "nid": "104",
                 "variant": null,
                 "level": 1,
                 "klass": "Mogall",
-                "faction": "Soldier",
+                "faction": "Monster",
                 "starting_items": [
                     [
                         "Evil Eye",
+                        false
+                    ]
+                ],
+                "starting_skills": [],
+                "team": "enemy",
+                "ai": "AttackExceptIsisIfPossible",
+                "roam_ai": null,
+                "ai_group": "",
+                "starting_position": [
+                    3,
+                    18
+                ],
+                "starting_traveler": null,
+                "generic": true
+            },
+            {
+                "nid": "106",
+                "variant": null,
+                "level": 1,
+                "klass": "Mogall",
+                "faction": "Monster",
+                "starting_items": [
+                    [
+                        "Evil Eye",
+                        false
+                    ]
+                ],
+                "starting_skills": [],
+                "team": "enemy",
+                "ai": "AttackExceptIsisIfPossible",
+                "roam_ai": null,
+                "ai_group": "",
+                "starting_position": [
+                    3,
+                    13
+                ],
+                "starting_traveler": null,
+                "generic": true
+            },
+            {
+                "nid": "107",
+                "variant": null,
+                "level": 1,
+                "klass": "Mogall",
+                "faction": "Monster",
+                "starting_items": [
+                    [
+                        "Evil Eye",
+                        false
+                    ]
+                ],
+                "starting_skills": [],
+                "team": "enemy",
+                "ai": "AttackExceptIsisIfPossible",
+                "roam_ai": null,
+                "ai_group": "",
+                "starting_position": [
+                    8,
+                    6
+                ],
+                "starting_traveler": null,
+                "generic": true
+            },
+            {
+                "nid": "108",
+                "variant": null,
+                "level": 1,
+                "klass": "ShoveDancer",
+                "faction": "Monster",
+                "starting_items": [
+                    [
+                        "Shove",
                         false
                     ]
                 ],
@@ -137,7 +146,7 @@
                 "ai_group": "",
                 "starting_position": [
                     4,
-                    18
+                    19
                 ],
                 "starting_traveler": null,
                 "generic": true
@@ -146,11 +155,11 @@
                 "nid": "105",
                 "variant": null,
                 "level": 1,
-                "klass": "Dancer",
-                "faction": "Soldier",
+                "klass": "LassoDancer",
+                "faction": "Monster",
                 "starting_items": [
                     [
-                        "Smite",
+                        "Lasso",
                         false
                     ]
                 ],
@@ -160,8 +169,8 @@
                 "roam_ai": null,
                 "ai_group": "",
                 "starting_position": [
-                    3,
-                    20
+                    15,
+                    21
                 ],
                 "starting_traveler": null,
                 "generic": true
@@ -204,6 +213,11 @@
             }
         ],
         "unit_groups": [],
-        "ai_groups": []
+        "ai_groups": [
+            {
+                "nid": "",
+                "trigger_threshold": 1
+            }
+        ]
     }
 ]

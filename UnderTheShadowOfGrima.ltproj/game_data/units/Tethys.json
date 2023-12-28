@@ -5,7 +5,7 @@
         "desc": "A beautiful and charming dancer from Jehanna.",
         "variant": null,
         "level": 1,
-        "klass": "Dancer",
+        "klass": "LassoDancer",
         "tags": [],
         "bases": {
             "HP": 18,

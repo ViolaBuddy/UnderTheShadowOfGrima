@@ -107,5 +107,8 @@
     "0_Recruit_Ba",
     "0_Recruit_Ka",
     "0_Level0_Teleport1",
-    "0_Level0_Time_Limit"
+    "0_Level0_Teleport2",
+    "0_Level0_Time_Limit",
+    "0_Level0_Reinforcements",
+    "0_Level0_StartCutscene"
 ]

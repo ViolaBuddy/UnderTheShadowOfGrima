@@ -9,7 +9,9 @@
         "priority": 20,
         "_source": [
             "add_talk;Isis;Ba",
-            "add_talk;Isis;Ka"
+            "add_talk;Isis;Ka",
+            "level_var;TimeLimit;11",
+            "trigger_script;0 Level0 StartCutscene"
         ]
     }
 ]

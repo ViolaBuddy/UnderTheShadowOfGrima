@@ -1,8 +1,8 @@
 [
     {
-        "nid": "Smite",
-        "name": "Smite",
-        "desc": "Pushes target unit 2 spaces away",
+        "nid": "Shove",
+        "name": "Shove",
+        "desc": "Pushes target unit 1 space away",
         "icon_nid": "Skills",
         "icon_index": [
             3,
@@ -20,10 +20,6 @@
             [
                 "exp",
                 11
-            ],
-            [
-                "shove",
-                2
             ],
             [
                 "weapon",
@@ -44,6 +40,10 @@
             [
                 "no_double",
                 null
+            ],
+            [
+                "shove",
+                1
             ]
         ]
     }

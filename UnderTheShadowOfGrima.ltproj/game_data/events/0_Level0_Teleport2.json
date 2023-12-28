@@ -1,0 +1,14 @@
+[
+    {
+        "name": "Level0 Teleport2",
+        "trigger": "Teleport2",
+        "level_nid": "0",
+        "condition": "unit.position == (7,11)",
+        "commands": [],
+        "only_once": false,
+        "priority": 20,
+        "_source": [
+            "move_unit;{unit};9,19;warp"
+        ]
+    }
+]

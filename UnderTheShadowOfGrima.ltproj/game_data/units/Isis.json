@@ -47,6 +47,10 @@
             [
                 "Sleep",
                 false
+            ],
+            [
+                "Physic",
+                false
             ]
         ],
         "learned_skills": [],

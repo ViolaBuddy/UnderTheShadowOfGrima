@@ -1,0 +1,54 @@
+[
+    {
+        "nid": "Lasso",
+        "name": "Lasso",
+        "desc": "Pulls units 1 space closer",
+        "icon_nid": "Skills",
+        "icon_index": [
+            3,
+            9
+        ],
+        "components": [
+            [
+                "min_range",
+                2
+            ],
+            [
+                "max_range",
+                2
+            ],
+            [
+                "exp",
+                11
+            ],
+            [
+                "weapon",
+                null
+            ],
+            [
+                "target_enemy",
+                null
+            ],
+            [
+                "weapon_type",
+                "Light"
+            ],
+            [
+                "status_on_hit",
+                "Nothing"
+            ],
+            [
+                "no_double",
+                null
+            ],
+            [
+                "shove",
+                -1
+            ],
+            [
+                "eval_special_range",
+                "x == 0 or y == 0"
+            ]
+        ]
+    }
+]
