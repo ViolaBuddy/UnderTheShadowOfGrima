@@ -44,10 +44,6 @@
             [
                 "shove",
                 -1
-            ],
-            [
-                "eval_special_range",
-                "x == 0 or y == 0"
             ]
         ]
     }

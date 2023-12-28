@@ -1,0 +1,20 @@
+[
+    {
+        "name": "DeathIsis",
+        "trigger": "unit_death",
+        "level_nid": "0",
+        "condition": "unit.nid == 'Isis'",
+        "commands": [],
+        "only_once": false,
+        "priority": 20,
+        "_source": [
+            "add_portrait;Isis;CenterLeft",
+            "expression;Isis;CloseEyes",
+            "speak;Isis;Hrrk!",
+            "speak;Isis;This is how I meet my end, failing to protect the queen's soul...|Queen Malika, and all of Plegia - I'm so sorry.",
+            "remove_portrait;Isis",
+            "remove_unit;Isis",
+            "lose_game"
+        ]
+    }
+]

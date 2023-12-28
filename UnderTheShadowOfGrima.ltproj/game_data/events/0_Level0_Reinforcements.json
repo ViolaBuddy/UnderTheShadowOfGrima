@@ -9,12 +9,12 @@
         "priority": 20,
         "_source": [
             "make_generic;;ShoveDancer;1;enemy;Pursue;Monster;;Shove",
-            "move_cursor;3,6",
+            "flicker_cursor;3,6",
             "add_unit;{created_unit};3,6;fade;push;fade",
             "wait;1000",
             "",
             "make_generic;;LassoDancer;1;enemy;Pursue;Monster;;Lasso",
-            "move_cursor;1,18",
+            "flicker_cursor;1,18",
             "add_unit;{created_unit};1,18;fade;push;fade",
             "wait;1000"
         ]

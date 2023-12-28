@@ -1,6 +1,7 @@
 [
     "global_DeathEirika",
     "0_DeathBaKa",
+    "0_DeathIsis",
     "global_DeathSeth",
     "global_DeathJoshua",
     "global_DeathColm",
@@ -107,8 +108,11 @@
     "0_Recruit_Ba",
     "0_Recruit_Ka",
     "0_Level0_Teleport1",
+    "0_Level0_EscapeKa",
+    "0_Level0_EscapeBa",
     "0_Level0_Teleport2",
     "0_Level0_Time_Limit",
     "0_Level0_Reinforcements",
-    "0_Level0_StartCutscene"
+    "0_Level0_StartCutscene",
+    "0_Level0_EndCutscene"
 ]

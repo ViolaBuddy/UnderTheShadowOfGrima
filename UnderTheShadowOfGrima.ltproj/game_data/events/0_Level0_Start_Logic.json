@@ -11,6 +11,8 @@
             "add_talk;Isis;Ba",
             "add_talk;Isis;Ka",
             "level_var;TimeLimit;11",
+            "level_var;SoulsRecruited;0",
+            "level_var;SoulsEscaped;0",
             "trigger_script;0 Level0 StartCutscene"
         ]
     }

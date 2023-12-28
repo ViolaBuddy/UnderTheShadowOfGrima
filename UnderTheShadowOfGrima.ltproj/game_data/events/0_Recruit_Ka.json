@@ -14,7 +14,12 @@
             "remove_portrait;Isis;no_block",
             "remove_portrait;Ka",
             "change_team;Ka;player",
-            "remove_talk;Isis;Ka"
+            "remove_talk;Isis;Ka",
+            "",
+            "inc_level_var;SoulsRecruited;1",
+            "if;v('SoulsRecruited') == 2",
+            "    speak;Isis;I've recruited both souls now.",
+            "end"
         ]
     }
 ]
