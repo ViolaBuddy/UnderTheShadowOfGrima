@@ -10,9 +10,9 @@
         "_source": [
             "move_cursor;Isis",
             "add_portrait;Isis;MidLeft",
-            "speak;Isis;I've arrived.|I must speak with the two parts of the queen's soul, and guide them to the gate, where they will pass on to the afterlife.|Three types of spiritual monsters are here to stop us.|One type will do direct damage to us. One type shoves us out of the way. One type has a silk lasso to pull us closer.|These monsters of Grima have already sensed the queen. More will come every turn.|Time is of the essence. After {e:v('TimeLimit')} turns, the queen's soul will fade.;;;;;;;;3",
+            "speak;Isis;I've arrived.|I must speak with the two parts of the queen's soul, and guide them to the gate, where they will pass on to the afterlife.|Three types of spiritual monsters are here to stop us.|One type does direct damage to us. One type shoves us out of the way. One type has a lasso to pull us back.|These monsters of Grima have already sensed the queen. More will come every turn.|Time is of the essence. After {e:v('TimeLimit')} turns, the queen's soul will fade.;;;;;;;;3",
             "flicker_cursor;9,19",
-            "speak;Isis;Souls are odd. They can fly into the void but cannot take stairs.|Fortunately, they can operate these teleporters to traverse this realm.;;;;;;;;3",
+            "speak;Isis;Souls are odd. They can fly over bottomless pits but cannot fly over stairs.|Fortunately, they can operate these teleporters to traverse this realm.;;;;;;;;3",
             "move_cursor;Isis",
             "speak;Isis;...Well, let us begin.;;;;;;;;3",
             "remove_portrait;Isis"

@@ -12,10 +12,9 @@
             "add_portrait;Isis;Left",
             "speak;Isis;The queen's ba has passed on to the Aaru!",
             "inc_level_var;SoulsEscaped;1",
+            "remove_portrait;Isis",
             "if;v('SoulsEscaped') == 2",
             "   trigger_script;0 Level0 EndCutscene",
-            "else",
-            "   remove_portrait;Isis",
             "end"
         ]
     }

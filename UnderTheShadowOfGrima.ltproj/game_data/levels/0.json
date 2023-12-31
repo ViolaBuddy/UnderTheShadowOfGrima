@@ -141,11 +141,11 @@
                 ],
                 "starting_skills": [],
                 "team": "enemy",
-                "ai": "Attack",
+                "ai": "AttackExceptIsisIfPossible",
                 "roam_ai": null,
                 "ai_group": "",
                 "starting_position": [
-                    5,
+                    6,
                     21
                 ],
                 "starting_traveler": null,
@@ -165,12 +165,108 @@
                 ],
                 "starting_skills": [],
                 "team": "enemy",
-                "ai": "Attack",
+                "ai": "AttackExceptIsisIfPossible",
+                "roam_ai": null,
+                "ai_group": "",
+                "starting_position": [
+                    16,
+                    22
+                ],
+                "starting_traveler": null,
+                "generic": true
+            },
+            {
+                "nid": "109",
+                "variant": null,
+                "level": 1,
+                "klass": "ShoveDancer",
+                "faction": "Monster",
+                "starting_items": [
+                    [
+                        "Shove",
+                        false
+                    ]
+                ],
+                "starting_skills": [],
+                "team": "enemy",
+                "ai": "AttackExceptIsisIfPossible",
+                "roam_ai": null,
+                "ai_group": "",
+                "starting_position": [
+                    14,
+                    10
+                ],
+                "starting_traveler": null,
+                "generic": true
+            },
+            {
+                "nid": "112",
+                "variant": null,
+                "level": 1,
+                "klass": "ShoveDancer",
+                "faction": "Monster",
+                "starting_items": [
+                    [
+                        "Shove",
+                        false
+                    ]
+                ],
+                "starting_skills": [],
+                "team": "enemy",
+                "ai": "AttackExceptIsisIfPossible",
                 "roam_ai": null,
                 "ai_group": "",
                 "starting_position": [
                     15,
-                    18
+                    10
+                ],
+                "starting_traveler": null,
+                "generic": true
+            },
+            {
+                "nid": "110",
+                "variant": null,
+                "level": 1,
+                "klass": "ShoveDancer",
+                "faction": "Monster",
+                "starting_items": [
+                    [
+                        "Shove",
+                        false
+                    ]
+                ],
+                "starting_skills": [],
+                "team": "enemy",
+                "ai": "AttackExceptIsisIfPossible",
+                "roam_ai": null,
+                "ai_group": "",
+                "starting_position": [
+                    9,
+                    5
+                ],
+                "starting_traveler": null,
+                "generic": true
+            },
+            {
+                "nid": "111",
+                "variant": null,
+                "level": 1,
+                "klass": "LassoDancer",
+                "faction": "Monster",
+                "starting_items": [
+                    [
+                        "Lasso",
+                        false
+                    ]
+                ],
+                "starting_skills": [],
+                "team": "enemy",
+                "ai": "AttackExceptIsisIfPossible",
+                "roam_ai": null,
+                "ai_group": "",
+                "starting_position": [
+                    6,
+                    13
                 ],
                 "starting_traveler": null,
                 "generic": true

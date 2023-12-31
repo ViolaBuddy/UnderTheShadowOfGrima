@@ -16,11 +16,11 @@
             "MAG": 30,
             "SKL": 13,
             "SPD": 9,
-            "LCK": 9,
+            "LCK": 19,
             "DEF": 3,
             "CON": 5,
             "MOV": 5,
-            "RES": 1
+            "RES": 7
         },
         "growths": {
             "HP": 0,
@@ -37,7 +37,7 @@
         "stat_cap_modifiers": {},
         "starting_items": [
             [
-                "Vulnerary",
+                "Heal",
                 false
             ],
             [
@@ -46,10 +46,6 @@
             ],
             [
                 "Sleep",
-                false
-            ],
-            [
-                "Physic",
                 false
             ]
         ],

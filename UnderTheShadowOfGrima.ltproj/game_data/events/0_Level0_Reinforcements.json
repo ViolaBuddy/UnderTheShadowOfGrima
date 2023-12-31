@@ -11,12 +11,12 @@
             "make_generic;;ShoveDancer;1;enemy;Pursue;Monster;;Shove",
             "flicker_cursor;3,6",
             "add_unit;{created_unit};3,6;fade;push;fade",
-            "wait;1000",
+            "wait;500",
             "",
             "make_generic;;LassoDancer;1;enemy;Pursue;Monster;;Lasso",
             "flicker_cursor;1,18",
             "add_unit;{created_unit};1,18;fade;push;fade",
-            "wait;1000"
+            "wait;500"
         ]
     }
 ]

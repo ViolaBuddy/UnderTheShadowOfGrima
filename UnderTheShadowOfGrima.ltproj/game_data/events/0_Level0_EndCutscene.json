@@ -8,7 +8,8 @@
         "only_once": false,
         "priority": 20,
         "_source": [
-            "speak;Isis;Both main parts of the queen's soul are nonw safe from Grima's power.|Rest in peace, Queen Malika. You left us too early.",
+            "add_portrait;Isis;CenterLeft",
+            "speak;Isis;The two main parts of the queen's soul are now safe from Grima's power.|Rest in peace, Queen Malika. You left us too early.",
             "remove_portrait;Isis",
             "win_game"
         ]

@@ -8,7 +8,9 @@
         "only_once": false,
         "priority": 20,
         "_source": [
-            "move_unit;{unit};9,19;warp"
+            "move_unit;{unit};9,19;warp",
+            "move_cursor;{unit}",
+            "has_finished;{unit}"
         ]
     }
 ]
